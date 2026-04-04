@@ -1,0 +1,31 @@
+{
+  "name": "book-writer-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for AI-assisted book and manuscript writing",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=dist/index.js --format=cjs --external:@modelcontextprotocol/sdk",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "docx": "^8.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.28.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "mcp",
+    "book-writing",
+    "manuscript",
+    "claude",
+    "ai-writing"
+  ],
+  "license": "MIT"
+}
