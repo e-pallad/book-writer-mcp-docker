@@ -7,6 +7,7 @@ import { registerStyleGuideTools } from "./tools/styleguide";
 import { registerContinuityTools } from "./tools/continuity";
 import { registerExportTools } from "./tools/export";
 import { registerCoverTools } from "./tools/cover";
+import { registerAuthorTools } from "./tools/author";
 
 const server = new McpServer({
   name: "book-writer-mcp",
@@ -21,6 +22,7 @@ registerStyleGuideTools(server);
 registerContinuityTools(server);
 registerExportTools(server);
 registerCoverTools(server);
+registerAuthorTools(server);
 
 // Start the server with stdio transport
 async function main() {

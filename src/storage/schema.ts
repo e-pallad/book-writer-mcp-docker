@@ -8,6 +8,23 @@ export interface Registry {
   chapters: ChapterMeta[];
 }
 
+export interface AuthorProfile {
+  name: string;
+  linkedinUrl?: string;
+  headline?: string;
+  location?: string;
+  summary?: string;
+  experience?: { title: string; company: string; duration?: string }[];
+  education?: { school: string; degree?: string; field?: string }[];
+  skills?: string[];
+  publications?: string[];
+  interests?: string[];
+  photoUrl?: string;
+  generatedIntro?: string;
+  generatedIntroShort?: string;
+  updatedAt: string;
+}
+
 export interface ChapterMeta {
   id: string;
   title: string;

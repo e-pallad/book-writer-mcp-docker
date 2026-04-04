@@ -6,6 +6,7 @@ import {
   StyleGuide,
   Outline,
   CoverSpec,
+  AuthorProfile,
 } from "./schema";
 
 const MCP_DIR = ".book-mcp";
@@ -133,6 +134,15 @@ export function saveCoverSpec(spec: CoverSpec): void {
   writeJSON(mcpPath("cover-spec.json"), spec);
 }
 
+// Author Profile
+export function getAuthorProfile(): AuthorProfile | null {
+  return readJSON<AuthorProfile>(mcpPath("author-profile.json"));
+}
+
+export function saveAuthorProfile(profile: AuthorProfile): void {
+  writeJSON(mcpPath("author-profile.json"), profile);
+}
+
 export function getProjectPaths() {
   return {
     projectDir: getProjectDir(),
@@ -143,5 +153,6 @@ export function getProjectPaths() {
     styleGuidePath: mcpPath("style-guide.json"),
     outlinePath: mcpPath("outline.json"),
     coverSpecPath: mcpPath("cover-spec.json"),
+    authorProfilePath: mcpPath("author-profile.json"),
   };
 }
