@@ -9,9 +9,9 @@ This is a [Model Context Protocol](https://modelcontextprotocol.io) server that 
 ## What This Gives You
 
 - **Start a book in one sentence.** Describe your idea. The AI initializes the project, creates your outline, and begins drafting chapters.
-- **Stay consistent across 100,000 words.** A story bible tracks every character, setting, plot thread, and timeline event. Continuity checking catches contradictions before they become rewrites.
+- **Stay consistent across 100,000 words.** A story bible tracks every character, setting, and plot thread. Continuity checking catches contradictions before they become rewrites.
 - **Write in your voice.** A style guide captures your tone, POV, tense, influences, and patterns to avoid — so every chapter sounds like *you*, not generic AI.
-- **See your book as you write it.** A built-in HTML preview renders your manuscript with beautiful book typography — Playfair Display headings, drop caps, justified text, ornamental dividers. Live-reload as you draft.
+- **See your book take shape.** A built-in HTML preview renders your manuscript with beautiful book typography ��� Playfair Display headings, drop caps, justified text, ornamental dividers. The preview server auto-refreshes every 10 seconds; run `book_export_markdown` after editing chapters to update the preview.
 - **Export to real formats.** One command compiles your manuscript to clean Markdown or a formatted `.docx` with title page, table of contents, page numbers, and configurable fonts/spacing.
 - **Design your cover.** Generate KDP-compliant cover specs with mood, color palettes, typography, and AI image prompts ready for DALL-E, Midjourney, or Stable Diffusion.
 - **Build your author profile.** Pull from LinkedIn or write manually — generates polished bios for your back cover and marketing.
@@ -21,7 +21,7 @@ This is a [Model Context Protocol](https://modelcontextprotocol.io) server that 
 ### Install
 
 ```bash
-git clone https://github.com/anthropics/book-writer-mcp.git
+git clone https://github.com/arupmaity1/book-writer-mcp.git
 cd book-writer-mcp
 npm install
 npm run build
@@ -171,11 +171,11 @@ your-book/
     ch-001-your-first-chapter.md
     ch-002-the-next-one.md
     ...
-  manuscript.md         # Compiled full manuscript
-  manuscript.docx       # Formatted Word document
-  preview.html          # Static HTML preview
+  manuscript.md         # Created by book_export_markdown
+  manuscript.docx       # Created by book_export_docx
+  preview.html          # Created by book_preview
   preview/
-    server.js           # Live preview server
+    server.js           # Created by book_preview_server
 ```
 
 ## The Preview Reader
@@ -188,9 +188,9 @@ The built-in preview renders your manuscript as a beautifully typeset book page:
 - Cream paper background with subtle shadow
 - Fixed word count badge
 - Responsive design for reading on any device
-- Live auto-refresh when using the preview server
+- Auto-refresh every 10 seconds when using the preview server (re-run `book_export_markdown` after chapter edits to update content)
 
-Run `book_preview` for a static HTML file, or `book_preview_server` to get a live-reloading server at `http://localhost:3456`.
+Run `book_preview` for a static HTML file, or `book_preview_server` to get a preview server at `http://localhost:3456`.
 
 ## Writing Workflows
 

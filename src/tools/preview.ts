@@ -13,20 +13,16 @@ function escapeHtml(text: string): string {
 function markdownToHtml(md: string): string {
   let html = escapeHtml(md);
 
-  // Horizontal rules
+  // Process headers in descending specificity to avoid partial matches
   html = html.replace(/^---$/gm, "<hr>");
-
-  // Headers
   html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
   html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
   html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
 
-  // Bold and italic
   html = html.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
   html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
 
-  // Paragraphs - split by double newlines
   const blocks = html.split(/\n\n+/);
   html = blocks
     .map((block) => {
@@ -178,8 +174,8 @@ function buildHtmlPage(title: string, author: string, content: string, wordCount
 </html>`;
 }
 
-function buildServerScript(_projectDir: string, title: string): string {
-  const escapedTitle = title.replace(/'/g, "\\'").replace(/`/g, "\\`");
+function buildServerScript(title: string): string {
+  const escapedTitle = title.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/`/g, "\\`");
 
   const lines = [
     "const http = require('http');",
@@ -220,7 +216,7 @@ function buildServerScript(_projectDir: string, title: string): string {
     "    '<html lang=\"en\"><head>' +",
     "    '<meta charset=\"UTF-8\">' +",
     "    '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">' +",
-    "    '<title>' + TITLE + ' — Live Preview</title>' +",
+    "    '<title>' + escapeHtml(TITLE) + ' \\u2014 Live Preview</title>' +",
     "    '<style>' +",
     "    \"@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap');\" +",
     "    '* { margin: 0; padding: 0; box-sizing: border-box; }' +",
@@ -255,7 +251,12 @@ function buildServerScript(_projectDir: string, title: string): string {
     "    try {",
     "      md = fs.readFileSync(MANUSCRIPT, 'utf-8');",
     "    } catch (e) {",
-    "      md = '# Manuscript not yet exported\\n\\nRun book_export_markdown to generate.';",
+    "      if (e.code === 'ENOENT') {",
+    "        md = '# Manuscript not yet exported\\n\\nRun `book_export_markdown` to generate.';",
+    "      } else {",
+    "        md = '# Error reading manuscript\\n\\n' + String(e);",
+    "        console.error('Failed to read manuscript:', e);",
+    "      }",
     "    }",
     "    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });",
     "    res.end(buildPage(md));",
@@ -273,8 +274,54 @@ function buildServerScript(_projectDir: string, title: string): string {
   return lines.join("\n") + "\n";
 }
 
-function compileManuscript(registry: ReturnType<typeof getRegistry> & {}): { markdown: string; wordCount: number; chapterCount: number } {
-  const chapters = registry.chapters.sort((a, b) => a.order - b.order);
+function safeWriteFile(filePath: string, content: string, description: string): void {
+  const parentDir = path.dirname(filePath);
+  if (!fs.existsSync(parentDir)) {
+    throw new BookMCPError(
+      `Cannot write ${description}: directory "${parentDir}" does not exist.`
+    );
+  }
+  try {
+    fs.writeFileSync(filePath, content, "utf-8");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new BookMCPError(`Failed to write ${description} to "${filePath}": ${msg}`);
+  }
+}
+
+function filterChapters(
+  registry: NonNullable<ReturnType<typeof getRegistry>>,
+  chapterIds?: string[]
+): { chapters: typeof registry.chapters; warnings: string[] } {
+  const warnings: string[] = [];
+  let chapters = registry.chapters.sort((a, b) => a.order - b.order);
+
+  if (chapterIds) {
+    const unknownIds = chapterIds.filter(
+      (id) => !registry.chapters.some((c) => c.id === id)
+    );
+    if (unknownIds.length > 0) {
+      throw new BookMCPError(
+        `Unknown chapter IDs: ${unknownIds.join(", ")}. ` +
+        `Available: ${registry.chapters.map((c) => c.id).join(", ")}`
+      );
+    }
+    chapters = chapters.filter((c) => chapterIds.includes(c.id));
+  } else {
+    const filtered = chapters.filter(
+      (c) => c.status === "final" || c.status === "review"
+    );
+    chapters = filtered.length > 0 ? filtered : chapters;
+  }
+
+  return { chapters, warnings };
+}
+
+function compileManuscript(
+  registry: NonNullable<ReturnType<typeof getRegistry>>,
+  chapterIds?: string[]
+): { markdown: string; wordCount: number; chapterCount: number; warnings: string[] } {
+  const { chapters, warnings } = filterChapters(registry, chapterIds);
 
   let markdown = `# ${registry.title}\n\n`;
   markdown += `**By ${registry.author}**\n\n`;
@@ -282,6 +329,10 @@ function compileManuscript(registry: ReturnType<typeof getRegistry> & {}): { mar
 
   for (const chapter of chapters) {
     const content = readChapterFile(chapter.filename);
+    if (!content) {
+      warnings.push(`Chapter "${chapter.title}" (${chapter.filename}) is missing or empty on disk.`);
+      continue;
+    }
     markdown += content;
     markdown += "\n\n---\n\n";
   }
@@ -290,6 +341,7 @@ function compileManuscript(registry: ReturnType<typeof getRegistry> & {}): { mar
     markdown,
     wordCount: countWords(markdown),
     chapterCount: chapters.length,
+    warnings,
   };
 }
 
@@ -302,7 +354,7 @@ export function registerPreviewTools(server: McpServer): void {
       chapters: z
         .array(z.string())
         .optional()
-        .describe("Specific chapter IDs to preview (default: all)"),
+        .describe("Specific chapter IDs to preview (default: all final/review chapters)"),
     },
     async ({ outputPath, chapters }) => {
       const registry = getRegistry();
@@ -312,42 +364,28 @@ export function registerPreviewTools(server: McpServer): void {
       const projectDir = process.env.BOOK_PROJECT_DIR || process.cwd();
       const outPath = outputPath || path.join(projectDir, "preview.html");
 
-      let allChapters = registry.chapters.sort((a, b) => a.order - b.order);
-      if (chapters) {
-        allChapters = allChapters.filter((c) => chapters.includes(c.id));
-      }
-
-      let markdown = `# ${registry.title}\n\n`;
-      markdown += `**By ${registry.author}**\n\n`;
-      markdown += `*${registry.genre}*\n\n---\n\n`;
-
-      for (const chapter of allChapters) {
-        const content = readChapterFile(chapter.filename);
-        markdown += content;
-        markdown += "\n\n---\n\n";
-      }
-
-      const wc = countWords(markdown);
+      const { markdown, wordCount: wc, chapterCount, warnings } = compileManuscript(registry, chapters);
       const htmlContent = markdownToHtml(markdown);
       const html = buildHtmlPage(registry.title, registry.author, htmlContent, wc);
 
-      fs.writeFileSync(outPath, html, "utf-8");
+      safeWriteFile(outPath, html, "preview HTML");
+
+      const result: Record<string, unknown> = {
+        message: "HTML preview generated. Open in a browser to read.",
+        outputPath: outPath,
+        wordCount: wc,
+        chaptersIncluded: chapterCount,
+        hint: `Open file://${outPath} in your browser`,
+      };
+      if (warnings.length > 0) {
+        result.warnings = warnings;
+      }
 
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: "HTML preview generated. Open in a browser to read.",
-                outputPath: outPath,
-                wordCount: wc,
-                chaptersIncluded: allChapters.length,
-                hint: `Open file://${outPath} in your browser`,
-              },
-              null,
-              2
-            ),
+            text: JSON.stringify(result, null, 2),
           },
         ],
       };
@@ -368,41 +406,46 @@ export function registerPreviewTools(server: McpServer): void {
       const projectDir = process.env.BOOK_PROJECT_DIR || process.cwd();
       const previewDir = path.join(projectDir, "preview");
 
-      if (!fs.existsSync(previewDir)) {
-        fs.mkdirSync(previewDir, { recursive: true });
+      try {
+        if (!fs.existsSync(previewDir)) {
+          fs.mkdirSync(previewDir, { recursive: true });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new BookMCPError(`Failed to create preview directory "${previewDir}": ${msg}`);
       }
 
-      // Generate the server script
-      const serverScript = buildServerScript(projectDir, registry.title);
+      const serverScript = buildServerScript(registry.title);
       const serverPath = path.join(previewDir, "server.js");
-      fs.writeFileSync(serverPath, serverScript, "utf-8");
+      safeWriteFile(serverPath, serverScript, "preview server script");
 
-      // Also ensure manuscript.md exists by exporting it
-      const { markdown, wordCount, chapterCount } = compileManuscript(registry);
+      // Overwrite manuscript.md with a fresh export of all chapters
+      const { markdown, wordCount, chapterCount, warnings } = compileManuscript(registry);
       const manuscriptPath = path.join(projectDir, "manuscript.md");
-      fs.writeFileSync(manuscriptPath, markdown, "utf-8");
+      safeWriteFile(manuscriptPath, markdown, "manuscript");
+
+      const result: Record<string, unknown> = {
+        message: "Live preview server created.",
+        serverPath,
+        wordCount,
+        chaptersIncluded: chapterCount,
+        instructions: [
+          `Run: node ${serverPath}`,
+          `Or: cd ${previewDir} && node server.js`,
+          `Then open: http://localhost:${port}`,
+          "The page auto-refreshes every 10 seconds.",
+          "Re-run book_export_markdown to update the manuscript.",
+        ],
+      };
+      if (warnings.length > 0) {
+        result.warnings = warnings;
+      }
 
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: "Live preview server created.",
-                serverPath,
-                wordCount,
-                chaptersIncluded: chapterCount,
-                instructions: [
-                  `Run: node ${serverPath}`,
-                  `Or: cd ${previewDir} && node server.js`,
-                  `Then open: http://localhost:${port}`,
-                  "The page auto-refreshes every 10 seconds.",
-                  "Re-run book_export_markdown to update the manuscript.",
-                ],
-              },
-              null,
-              2
-            ),
+            text: JSON.stringify(result, null, 2),
           },
         ],
       };
