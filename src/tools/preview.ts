@@ -1,0 +1,411 @@
+import { z } from "zod";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import * as fs from "fs";
+import * as path from "path";
+import { getRegistry, readChapterFile } from "../storage/filestore";
+import { BookMCPError } from "../utils/errors";
+import { countWords } from "../utils/wordcount";
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function markdownToHtml(md: string): string {
+  let html = escapeHtml(md);
+
+  // Horizontal rules
+  html = html.replace(/^---$/gm, "<hr>");
+
+  // Headers
+  html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+  html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+  html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+
+  // Bold and italic
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+
+  // Paragraphs - split by double newlines
+  const blocks = html.split(/\n\n+/);
+  html = blocks
+    .map((block) => {
+      block = block.trim();
+      if (!block) return "";
+      if (/^<(h[1-3]|hr)/.test(block)) return block;
+      return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+    })
+    .join("\n");
+
+  return html;
+}
+
+function buildHtmlPage(title: string, author: string, content: string, wordCount: number): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)} — Preview</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #f5f1eb;
+      color: #2c2c2c;
+      font-family: 'Source Serif 4', 'Georgia', serif;
+      font-size: 18px;
+      line-height: 1.8;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .book {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 60px 40px 120px;
+      background: #fffdf8;
+      min-height: 100vh;
+      box-shadow: 0 0 60px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      font-family: 'Playfair Display', 'Georgia', serif;
+      font-size: 2em;
+      font-weight: 700;
+      margin: 2em 0 0.6em;
+      line-height: 1.25;
+      color: #1a1a1a;
+      letter-spacing: -0.01em;
+    }
+
+    h1:first-child {
+      font-size: 2.4em;
+      margin-top: 1em;
+      text-align: center;
+      border-bottom: 2px solid #c9b99a;
+      padding-bottom: 0.5em;
+      margin-bottom: 1em;
+    }
+
+    h2 {
+      font-family: 'Playfair Display', 'Georgia', serif;
+      font-size: 1.4em;
+      font-weight: 700;
+      margin: 2.5em 0 0.8em;
+      color: #1a1a1a;
+      letter-spacing: 0.02em;
+    }
+
+    h3 {
+      font-family: 'Playfair Display', 'Georgia', serif;
+      font-size: 1.15em;
+      font-weight: 700;
+      margin: 2em 0 0.6em;
+      color: #333;
+    }
+
+    p {
+      margin-bottom: 1.2em;
+      text-align: justify;
+      hyphens: auto;
+    }
+
+    /* Drop cap on the first paragraph after each chapter heading */
+    h1 + p::first-letter,
+    h2 + p::first-letter {
+      font-family: 'Playfair Display', serif;
+      font-size: 3.2em;
+      float: left;
+      line-height: 0.8;
+      margin: 0.05em 0.1em 0 0;
+      color: #6b4c2a;
+    }
+
+    em { font-style: italic; }
+    strong { font-weight: 600; }
+
+    hr {
+      border: none;
+      text-align: center;
+      margin: 2.5em 0;
+    }
+    hr::after {
+      content: '\\2022  \\2022  \\2022';
+      color: #c9b99a;
+      font-size: 1.2em;
+      letter-spacing: 0.5em;
+    }
+
+    .timestamp {
+      text-align: center;
+      color: #999;
+      font-size: 0.75em;
+      font-family: system-ui, sans-serif;
+      padding: 20px 0;
+      border-top: 1px solid #e8e2d8;
+      margin-top: 60px;
+    }
+
+    .word-count {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #2c2c2c;
+      color: #f5f1eb;
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      opacity: 0.7;
+    }
+
+    @media (max-width: 700px) {
+      .book { padding: 40px 24px 100px; }
+      body { font-size: 16px; }
+      h1:first-child { font-size: 1.8em; }
+    }
+  </style>
+</head>
+<body>
+  <div class="book">
+    ${content}
+    <div class="timestamp">Generated: ${new Date().toLocaleString()}</div>
+  </div>
+  <div class="word-count">${wordCount.toLocaleString()} words</div>
+</body>
+</html>`;
+}
+
+function buildServerScript(_projectDir: string, title: string): string {
+  const escapedTitle = title.replace(/'/g, "\\'").replace(/`/g, "\\`");
+
+  const lines = [
+    "const http = require('http');",
+    "const fs = require('fs');",
+    "const path = require('path');",
+    "",
+    "const PORT = process.env.PREVIEW_PORT || 3456;",
+    "const MANUSCRIPT = path.join(__dirname, '..', 'manuscript.md');",
+    "const TITLE = '" + escapedTitle + "';",
+    "",
+    "function escapeHtml(text) {",
+    "  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');",
+    "}",
+    "",
+    "function markdownToHtml(md) {",
+    "  let html = escapeHtml(md);",
+    "  html = html.replace(/^---$/gm, '<hr>');",
+    "  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');",
+    "  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');",
+    "  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');",
+    "  html = html.replace(/\\*\\*\\*(.+?)\\*\\*\\*/g, '<strong><em>$1</em></strong>');",
+    "  html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');",
+    "  html = html.replace(/\\*(.+?)\\*/g, '<em>$1</em>');",
+    "  var blocks = html.split(/\\n\\n+/);",
+    "  html = blocks.map(function(block) {",
+    "    block = block.trim();",
+    "    if (!block) return '';",
+    "    if (/^<(h[1-3]|hr)/.test(block)) return block;",
+    "    return '<p>' + block.replace(/\\n/g, '<br>') + '</p>';",
+    "  }).join('\\n');",
+    "  return html;",
+    "}",
+    "",
+    "function buildPage(manuscriptMd) {",
+    "  var content = markdownToHtml(manuscriptMd);",
+    "  var wordCount = manuscriptMd.split(/\\s+/).filter(Boolean).length;",
+    "  return '<!DOCTYPE html>' +",
+    "    '<html lang=\"en\"><head>' +",
+    "    '<meta charset=\"UTF-8\">' +",
+    "    '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">' +",
+    "    '<title>' + TITLE + ' — Live Preview</title>' +",
+    "    '<style>' +",
+    "    \"@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap');\" +",
+    "    '* { margin: 0; padding: 0; box-sizing: border-box; }' +",
+    "    'body { background: #f5f1eb; color: #2c2c2c; font-family: Source Serif 4, Georgia, serif; font-size: 18px; line-height: 1.8; -webkit-font-smoothing: antialiased; }' +",
+    "    '.book { max-width: 640px; margin: 0 auto; padding: 60px 40px 120px; background: #fffdf8; min-height: 100vh; box-shadow: 0 0 60px rgba(0,0,0,0.08); }' +",
+    "    'h1 { font-family: Playfair Display, Georgia, serif; font-size: 2em; font-weight: 700; margin: 2em 0 0.6em; line-height: 1.25; color: #1a1a1a; letter-spacing: -0.01em; }' +",
+    "    'h1:first-child { font-size: 2.4em; margin-top: 1em; text-align: center; border-bottom: 2px solid #c9b99a; padding-bottom: 0.5em; margin-bottom: 1em; }' +",
+    "    'h2 { font-family: Playfair Display, Georgia, serif; font-size: 1.4em; font-weight: 700; margin: 2.5em 0 0.8em; color: #1a1a1a; letter-spacing: 0.02em; }' +",
+    "    'h3 { font-family: Playfair Display, Georgia, serif; font-size: 1.15em; font-weight: 700; margin: 2em 0 0.6em; color: #333; }' +",
+    "    'p { margin-bottom: 1.2em; text-align: justify; hyphens: auto; }' +",
+    "    'h1 + p::first-letter, h2 + p::first-letter { font-family: Playfair Display, serif; font-size: 3.2em; float: left; line-height: 0.8; margin: 0.05em 0.1em 0 0; color: #6b4c2a; }' +",
+    "    'em { font-style: italic; } strong { font-weight: 600; }' +",
+    "    'hr { border: none; text-align: center; margin: 2.5em 0; }' +",
+    "    'hr::after { content: \"\\\\2022  \\\\2022  \\\\2022\"; color: #c9b99a; font-size: 1.2em; letter-spacing: 0.5em; }' +",
+    "    '.timestamp { text-align: center; color: #999; font-size: 0.75em; font-family: system-ui, sans-serif; padding: 20px 0; border-top: 1px solid #e8e2d8; margin-top: 60px; }' +",
+    "    '.word-count { position: fixed; bottom: 20px; right: 20px; background: #2c2c2c; color: #f5f1eb; font-family: system-ui, sans-serif; font-size: 12px; padding: 8px 14px; border-radius: 20px; opacity: 0.7; }' +",
+    "    '@media (max-width: 700px) { .book { padding: 40px 24px 100px; } body { font-size: 16px; } h1:first-child { font-size: 1.8em; } }' +",
+    "    '</style>' +",
+    "    '<script>setTimeout(function() { location.reload(); }, 10000);</script>' +",
+    "    '</head><body>' +",
+    "    '<div class=\"book\">' +",
+    "    content +",
+    "    '<div class=\"timestamp\">Last updated: ' + new Date().toLocaleString() + '</div>' +",
+    "    '</div>' +",
+    "    '<div class=\"word-count\">' + wordCount.toLocaleString() + ' words</div>' +",
+    "    '</body></html>';",
+    "}",
+    "",
+    "var server = http.createServer(function(req, res) {",
+    "  if (req.url === '/' || req.url === '/index.html') {",
+    "    var md = '';",
+    "    try {",
+    "      md = fs.readFileSync(MANUSCRIPT, 'utf-8');",
+    "    } catch (e) {",
+    "      md = '# Manuscript not yet exported\\n\\nRun book_export_markdown to generate.';",
+    "    }",
+    "    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });",
+    "    res.end(buildPage(md));",
+    "  } else {",
+    "    res.writeHead(404);",
+    "    res.end('Not found');",
+    "  }",
+    "});",
+    "",
+    "server.listen(PORT, function() {",
+    "  console.log('Book preview running at http://localhost:' + PORT);",
+    "});",
+  ];
+
+  return lines.join("\n") + "\n";
+}
+
+function compileManuscript(registry: ReturnType<typeof getRegistry> & {}): { markdown: string; wordCount: number; chapterCount: number } {
+  const chapters = registry.chapters.sort((a, b) => a.order - b.order);
+
+  let markdown = `# ${registry.title}\n\n`;
+  markdown += `**By ${registry.author}**\n\n`;
+  markdown += `*${registry.genre}*\n\n---\n\n`;
+
+  for (const chapter of chapters) {
+    const content = readChapterFile(chapter.filename);
+    markdown += content;
+    markdown += "\n\n---\n\n";
+  }
+
+  return {
+    markdown,
+    wordCount: countWords(markdown),
+    chapterCount: chapters.length,
+  };
+}
+
+export function registerPreviewTools(server: McpServer): void {
+  server.tool(
+    "book_preview",
+    "Generate a beautiful HTML preview of the manuscript for reading in a browser",
+    {
+      outputPath: z.string().optional().describe("Output HTML file path (default: ./preview.html)"),
+      chapters: z
+        .array(z.string())
+        .optional()
+        .describe("Specific chapter IDs to preview (default: all)"),
+    },
+    async ({ outputPath, chapters }) => {
+      const registry = getRegistry();
+      if (!registry)
+        throw new BookMCPError("No book project found. Run book_init first.");
+
+      const projectDir = process.env.BOOK_PROJECT_DIR || process.cwd();
+      const outPath = outputPath || path.join(projectDir, "preview.html");
+
+      let allChapters = registry.chapters.sort((a, b) => a.order - b.order);
+      if (chapters) {
+        allChapters = allChapters.filter((c) => chapters.includes(c.id));
+      }
+
+      let markdown = `# ${registry.title}\n\n`;
+      markdown += `**By ${registry.author}**\n\n`;
+      markdown += `*${registry.genre}*\n\n---\n\n`;
+
+      for (const chapter of allChapters) {
+        const content = readChapterFile(chapter.filename);
+        markdown += content;
+        markdown += "\n\n---\n\n";
+      }
+
+      const wc = countWords(markdown);
+      const htmlContent = markdownToHtml(markdown);
+      const html = buildHtmlPage(registry.title, registry.author, htmlContent, wc);
+
+      fs.writeFileSync(outPath, html, "utf-8");
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                message: "HTML preview generated. Open in a browser to read.",
+                outputPath: outPath,
+                wordCount: wc,
+                chaptersIncluded: allChapters.length,
+                hint: `Open file://${outPath} in your browser`,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "book_preview_server",
+    "Set up a live preview server that auto-refreshes as you write. Creates a preview/ directory with a Node.js server.",
+    {
+      port: z.number().optional().default(3456).describe("Server port (default: 3456)"),
+    },
+    async ({ port }) => {
+      const registry = getRegistry();
+      if (!registry)
+        throw new BookMCPError("No book project found. Run book_init first.");
+
+      const projectDir = process.env.BOOK_PROJECT_DIR || process.cwd();
+      const previewDir = path.join(projectDir, "preview");
+
+      if (!fs.existsSync(previewDir)) {
+        fs.mkdirSync(previewDir, { recursive: true });
+      }
+
+      // Generate the server script
+      const serverScript = buildServerScript(projectDir, registry.title);
+      const serverPath = path.join(previewDir, "server.js");
+      fs.writeFileSync(serverPath, serverScript, "utf-8");
+
+      // Also ensure manuscript.md exists by exporting it
+      const { markdown, wordCount, chapterCount } = compileManuscript(registry);
+      const manuscriptPath = path.join(projectDir, "manuscript.md");
+      fs.writeFileSync(manuscriptPath, markdown, "utf-8");
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                message: "Live preview server created.",
+                serverPath,
+                wordCount,
+                chaptersIncluded: chapterCount,
+                instructions: [
+                  `Run: node ${serverPath}`,
+                  `Or: cd ${previewDir} && node server.js`,
+                  `Then open: http://localhost:${port}`,
+                  "The page auto-refreshes every 10 seconds.",
+                  "Re-run book_export_markdown to update the manuscript.",
+                ],
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+}

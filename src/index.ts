@@ -8,6 +8,7 @@ import { registerContinuityTools } from "./tools/continuity";
 import { registerExportTools } from "./tools/export";
 import { registerCoverTools } from "./tools/cover";
 import { registerAuthorTools } from "./tools/author";
+import { registerPreviewTools } from "./tools/preview";
 
 const server = new McpServer({
   name: "book-writer-mcp",
@@ -23,6 +24,7 @@ registerContinuityTools(server);
 registerExportTools(server);
 registerCoverTools(server);
 registerAuthorTools(server);
+registerPreviewTools(server);
 
 // Start the server with stdio transport
 async function main() {
