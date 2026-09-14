@@ -4,9 +4,13 @@
   "description": "MCP server for AI-assisted book and manuscript writing",
   "main": "dist/index.js",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=dist/index.js --format=cjs --external:@modelcontextprotocol/sdk",
+    "build": "npm run build:stdio && npm run build:http",
+    "build:stdio": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=dist/index.js --format=cjs --external:@modelcontextprotocol/sdk",
+    "build:http": "esbuild src/http-server.ts --bundle --platform=node --target=node18 --outfile=dist/http-server.js --format=cjs --external:@modelcontextprotocol/sdk",
     "dev": "ts-node src/index.ts",
+    "dev:http": "ts-node src/http-server.ts",
     "start": "node dist/index.js",
+    "start:http": "node dist/http-server.js",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
   },
   "dependencies": {
