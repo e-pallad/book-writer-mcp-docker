@@ -71,6 +71,54 @@ Open Claude and say:
 
 That's it. The AI creates the project structure, and you're writing.
 
+## Remote HTTP Mode (Docker)
+
+The default entry point (`dist/index.js`) speaks stdio, which is what Claude Desktop and Claude Code launch as a local command. Claude.ai and the Claude mobile apps cannot launch local commands — they only talk to **Custom Connectors** over HTTP. For those clients the server ships a second entry point (`dist/http-server.js`) that serves the exact same tools over the MCP Streamable HTTP transport at `POST /mcp`.
+
+Both entry points build the server from the same factory (`src/server.ts`), so there is one implementation of the tools and story bible regardless of transport.
+
+### Run it
+
+```bash
+cp .env.example .env
+# put a real secret in MCP_AUTH_TOKEN, e.g. openssl rand -hex 32
+docker compose up --build
+```
+
+Your book lives in `./data` on the host, mounted at `/app/data` in the container and exposed to the server as `BOOK_PROJECT_DIR`. Everything the tools write — `chapters/`, `.book-mcp/`, `manuscript.md`, `manuscript.docx` — lands there and survives a rebuild.
+
+`docker-compose.yml` reads `MCP_AUTH_TOKEN` and `PORT` from `.env`. `GET /health` is unauthenticated and returns the session count, which is handy for a proxy or an orchestrator health check.
+
+To run it without Docker:
+
+```bash
+npm install && npm run build
+MCP_AUTH_TOKEN=your-secret BOOK_PROJECT_DIR=/path/to/book npm run start:http
+```
+
+The server refuses to start when `MCP_AUTH_TOKEN` is unset, so it is never exposed without a token.
+
+### Authentication
+
+There is no OAuth flow here — authentication is a single shared secret. Every request to `/mcp` must carry:
+
+```
+Authorization: Bearer <MCP_AUTH_TOKEN>
+```
+
+Anything else gets `401`. In Claude, open **Settings → Connectors → Add custom connector**, enter your `https://.../mcp` URL, and add `Authorization` with the value `Bearer <your token>` under the connector's custom/advanced HTTP headers.
+
+### Making it reachable
+
+Claude opens the connection from Anthropic's cloud infrastructure, not from your phone or browser. A container on `localhost` — or anywhere inside your LAN — is therefore not reachable, even if you can open the URL yourself. The endpoint needs a **public HTTPS URL**:
+
+- a reverse proxy (Caddy, nginx, Traefik) on your own domain with a TLS certificate, forwarding to the container port, or
+- a tunnel such as Cloudflare Tunnel or ngrok if you do not want to expose a host directly.
+
+Plain HTTP is not accepted, so terminate TLS at the proxy or tunnel. Treat the bearer token as the only thing standing between the internet and your manuscript: use a long random value and rotate it if it leaks.
+
+> **Port note:** `book_preview_server` also defaults to port 3456. If you use the preview server inside the same container, set `PREVIEW_PORT` (or `PORT`) so the two do not collide.
+
 ## Tools Reference
 
 ### Manuscript (core workflow)
