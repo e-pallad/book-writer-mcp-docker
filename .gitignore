@@ -2,3 +2,6 @@ node_modules/
 dist/
 .xamun-hands/
 CLAUDE.md
+
+.env
+data/

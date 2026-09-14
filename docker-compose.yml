@@ -1,0 +1,14 @@
+services:
+  book-writer-mcp:
+    build: .
+    image: book-writer-mcp
+    container_name: book-writer-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      BOOK_PROJECT_DIR: /app/data
+    ports:
+      - "${PORT:-3456}:${PORT:-3456}"
+    volumes:
+      - ./data:/app/data
