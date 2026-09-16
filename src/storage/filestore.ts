@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { randomUUID } from "crypto";
 import {
   Registry,
   StoryBible,
@@ -8,6 +9,7 @@ import {
   CoverSpec,
   AuthorProfile,
 } from "./schema";
+import { BookMCPError } from "../utils/errors";
 
 const MCP_DIR = ".book-mcp";
 const CHAPTERS_DIR = "chapters";
@@ -30,15 +32,29 @@ function ensureDir(dirPath: string): void {
   }
 }
 
+// Writes via a temp file + rename so a crash or concurrent read never
+// observes a partially-written file; rename is atomic on the same filesystem.
+function writeFileAtomic(filePath: string, data: string): void {
+  ensureDir(path.dirname(filePath));
+  const tmpPath = `${filePath}.${randomUUID()}.tmp`;
+  fs.writeFileSync(tmpPath, data, "utf-8");
+  fs.renameSync(tmpPath, filePath);
+}
+
 function readJSON<T>(filePath: string): T | null {
   if (!fs.existsSync(filePath)) return null;
   const raw = fs.readFileSync(filePath, "utf-8");
-  return JSON.parse(raw) as T;
+  try {
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    throw new BookMCPError(
+      `Corrupted project data in ${filePath}: ${(error as Error).message}`
+    );
+  }
 }
 
 function writeJSON<T>(filePath: string, data: T): void {
-  ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+  writeFileAtomic(filePath, JSON.stringify(data, null, 2));
 }
 
 // Registry
@@ -94,8 +110,7 @@ export function readChapterFile(filename: string): string {
 }
 
 export function writeChapterFile(filename: string, content: string): void {
-  ensureDir(chaptersPath());
-  fs.writeFileSync(chaptersPath(filename), content, "utf-8");
+  writeFileAtomic(chaptersPath(filename), content);
 }
 
 // Story Bible
