@@ -21,8 +21,8 @@ This is a [Model Context Protocol](https://modelcontextprotocol.io) server that 
 ### Install
 
 ```bash
-git clone https://github.com/arupmaity1/book-writer-mcp.git
-cd book-writer-mcp
+git clone https://github.com/e-pallad/book-writer-mcp-docker.git
+cd book-writer-mcp-docker
 npm install
 npm run build
 ```
