@@ -12,3 +12,16 @@ services:
       - "${PORT:-3456}:${PORT:-3456}"
     volumes:
       - ./data:/app/data
+
+  # Exposes book-writer-mcp at a public HTTPS hostname without opening any
+  # inbound ports. Create the tunnel and its public hostname in the
+  # Cloudflare Zero Trust dashboard first (see README), then set
+  # CLOUDFLARE_TUNNEL_TOKEN in .env. Omit this service if you're fronting
+  # the container with your own reverse proxy instead.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: book-mcp-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - book-writer-mcp

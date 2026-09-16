@@ -119,6 +119,18 @@ Plain HTTP is not accepted, so terminate TLS at the proxy or tunnel. Treat the b
 
 > **Port note:** `book_preview_server` also defaults to port 3456. If you use the preview server inside the same container, set `PREVIEW_PORT` (or `PORT`) so the two do not collide.
 
+#### Cloudflare Tunnel (recommended for mobile)
+
+`docker-compose.yml` includes an optional `cloudflared` service that gives the container a stable public hostname without opening any inbound ports — useful since the Claude mobile app's connector config points at a fixed URL. Setup happens once, mostly in the Cloudflare dashboard:
+
+1. In the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/), go to **Networks → Tunnels → Create a tunnel**, choose **Cloudflared**, and name it (e.g. `book-mcp`).
+2. Copy the tunnel token shown during setup into `.env` as `CLOUDFLARE_TUNNEL_TOKEN`.
+3. Still in the tunnel's setup, add a **Public Hostname**: your domain/subdomain (e.g. `book-mcp.example.com`), service type `HTTP`, and URL `book-writer-mcp:3456` — that's the compose service name and container-internal port, not `localhost`.
+4. `docker compose up -d` — this starts both `book-writer-mcp` and `cloudflared`; the tunnel connects outbound to Cloudflare's edge, so no firewall or router changes are needed.
+5. In Claude, add the custom connector at `https://book-mcp.example.com/mcp` with the `Authorization: Bearer <MCP_AUTH_TOKEN>` header, same as any other setup.
+
+The hostname stays stable across restarts and rebuilds, so you only configure the connector once.
+
 ## Tools Reference
 
 ### Manuscript (core workflow)
