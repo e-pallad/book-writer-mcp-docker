@@ -109,6 +109,9 @@ function main() {
 
   const app = express();
   app.disable("x-powered-by");
+  // Trust the first hop (cloudflared/docker-compose network) so
+  // express-rate-limit can read X-Forwarded-For without throwing.
+  app.set("trust proxy", 1);
 
   const oauthEnabled = Boolean(publicUrl);
   let mcpAuth: (req: Request, res: Response, next: NextFunction) => void = (
