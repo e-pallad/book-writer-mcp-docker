@@ -87,7 +87,7 @@ docker compose up --build
 
 Your book lives in `./data` on the host, mounted at `/app/data` in the container and exposed to the server as `BOOK_PROJECT_DIR`. Everything the tools write — `chapters/`, `.book-mcp/`, `manuscript.md`, `manuscript.docx` — lands there and survives a rebuild.
 
-`docker-compose.yml` reads `MCP_AUTH_TOKEN` and `PORT` from `.env`. `GET /health` is unauthenticated and returns the session count, which is handy for a proxy or an orchestrator health check.
+`docker-compose.yml` reads `MCP_AUTH_TOKEN`, `PORT`, `MCP_PUBLIC_URL`, `MCP_OAUTH_PASSPHRASE` and `CLOUDFLARE_TUNNEL_TOKEN` from `.env`. `GET /health` is unauthenticated and returns the session count, which is handy for a proxy or an orchestrator health check.
 
 To run it without Docker:
 
@@ -100,13 +100,35 @@ The server refuses to start when `MCP_AUTH_TOKEN` is unset, so it is never expos
 
 ### Authentication
 
-There is no OAuth flow here — authentication is a single shared secret. Every request to `/mcp` must carry:
+The server supports two authentication paths at the same time, because Claude's clients do not all support the same one.
+
+| Client | Path |
+| --- | --- |
+| Claude Code, Claude Desktop | static bearer token (custom header) |
+| Claude.ai web, Claude mobile apps | OAuth |
+
+**Static bearer token.** Set `MCP_AUTH_TOKEN` and send it on every request to `/mcp`:
 
 ```
 Authorization: Bearer <MCP_AUTH_TOKEN>
 ```
 
-Anything else gets `401`. In Claude, open **Settings → Connectors → Add custom connector**, enter your `https://.../mcp` URL, and add `Authorization` with the value `Bearer <your token>` under the connector's custom/advanced HTTP headers.
+Anything else gets `401`. This is what Claude Code and Claude Desktop use, and it is all you need if those are your only clients. Leave `MCP_PUBLIC_URL` unset and the server runs in this mode alone — no OAuth endpoints are served.
+
+**OAuth (required for Claude.ai and the mobile apps).** The custom connector dialog on claude.ai offers only *OAuth Client ID* and *Client Secret* under Advanced settings — there is no field for a bearer token or an arbitrary header — so a connector added there needs the server to speak OAuth. Set `MCP_PUBLIC_URL` to the public HTTPS origin the container is reachable at and the server additionally acts as an OAuth 2.1 authorization server:
+
+```
+MCP_PUBLIC_URL=https://books.example.com
+MCP_OAUTH_PASSPHRASE=a-long-random-passphrase   # optional; defaults to MCP_AUTH_TOKEN
+```
+
+It then serves the discovery and flow endpoints Claude expects — `/.well-known/oauth-protected-resource/mcp`, `/.well-known/oauth-authorization-server`, `/register` (dynamic client registration), `/authorize`, `/token` and `/revoke` — with PKCE `S256` required and tokens bound to the `/mcp` resource.
+
+There are no user accounts. Claude registers itself as a client, then sends you to a single page that asks for `MCP_OAUTH_PASSPHRASE`; entering it correctly authorizes the connector. That is the same trust model as the bearer token: whoever knows the passphrase owns the book project. Registered clients and issued tokens are stored in `.book-mcp/oauth.json` (mode `0600`, tokens kept only as SHA-256 digests) so a container restart does not disconnect an authorized connector.
+
+To connect: **Settings → Connectors → Add custom connector**, enter `https://your-domain/mcp`, leave the OAuth client fields empty (Claude registers itself), then complete the passphrase prompt Claude opens.
+
+> Several users have reported that claude.ai completes the OAuth flow but then does not attach the access token to `/mcp` requests ([#79](https://github.com/anthropics/claude-ai-mcp/issues/79), [#155](https://github.com/anthropics/claude-ai-mcp/issues/155), [#162](https://github.com/anthropics/claude-ai-mcp/issues/162)). If the connector authorizes but every call comes back `401`, check those issues before debugging your own setup.
 
 ### Making it reachable
 
