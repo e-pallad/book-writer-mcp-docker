@@ -69,8 +69,42 @@ async function createSession(): Promise<StreamableHTTPServerTransport> {
   return transport;
 }
 
+// The transport sends "text/event-stream" without a charset. That stream is
+// always UTF-8, but clients and proxies that fall back to the historical
+// ISO-8859-1 default for text/* turn every "äüö" into mojibake, so the charset
+// is spelled out on the way out. writeHead is what the transport calls, and it
+// replaces any header set earlier on the response.
+function declareUtf8ContentType(res: Response): void {
+  const originalWriteHead = res.writeHead.bind(res);
+
+  res.writeHead = function patchedWriteHead(
+    this: Response,
+    ...args: unknown[]
+  ) {
+    const headers = args.find(
+      (arg) => typeof arg === "object" && arg !== null && !Array.isArray(arg)
+    ) as Record<string, unknown> | undefined;
+
+    if (headers) {
+      for (const [key, value] of Object.entries(headers)) {
+        if (
+          key.toLowerCase() === "content-type" &&
+          typeof value === "string" &&
+          value.startsWith("text/") &&
+          !/;\s*charset=/i.test(value)
+        ) {
+          headers[key] = `${value}; charset=utf-8`;
+        }
+      }
+    }
+
+    return (originalWriteHead as (...a: unknown[]) => Response)(...args);
+  } as Response["writeHead"];
+}
+
 async function handleMcpRequest(req: Request, res: Response): Promise<void> {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
+  declareUtf8ContentType(res);
 
   if (req.method === "POST") {
     let transport = sessionId ? transports[sessionId] : undefined;

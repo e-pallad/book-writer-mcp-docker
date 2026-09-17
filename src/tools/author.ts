@@ -7,6 +7,7 @@ import {
 } from "../storage/filestore";
 import { AuthorProfile } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
+import { decodeHtmlEntities } from "../utils/text";
 
 async function fetchLinkedInProfile(url: string): Promise<Partial<AuthorProfile>> {
   // Normalize the URL
@@ -38,7 +39,8 @@ async function fetchLinkedInProfile(url: string): Promise<Partial<AuthorProfile>
     const ogTitle = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]*)"/) ||
       html.match(/<meta[^>]*content="([^"]*)"[^>]*property="og:title"/);
     if (ogTitle) {
-      const parts = ogTitle[1].split(" - ");
+      // Meta attributes are HTML-encoded, so "Jörg" arrives as "J&ouml;rg".
+      const parts = decodeHtmlEntities(ogTitle[1]).split(" - ");
       extracted.name = parts[0]?.trim();
       if (parts[1]) extracted.headline = parts.slice(1).join(" - ").trim();
     }
@@ -47,14 +49,14 @@ async function fetchLinkedInProfile(url: string): Promise<Partial<AuthorProfile>
     const ogDesc = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*)"/) ||
       html.match(/<meta[^>]*content="([^"]*)"[^>]*property="og:description"/);
     if (ogDesc) {
-      extracted.summary = ogDesc[1].trim();
+      extracted.summary = decodeHtmlEntities(ogDesc[1]).trim();
     }
 
     // og:image for photo
     const ogImage = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]*)"/) ||
       html.match(/<meta[^>]*content="([^"]*)"[^>]*property="og:image"/);
     if (ogImage) {
-      extracted.photoUrl = ogImage[1].trim();
+      extracted.photoUrl = decodeHtmlEntities(ogImage[1]).trim();
     }
 
     // Try to extract from JSON-LD if available
@@ -100,7 +102,7 @@ async function fetchLinkedInProfile(url: string): Promise<Partial<AuthorProfile>
     const geoRegion = html.match(/<meta[^>]*name="geo\.region"[^>]*content="([^"]*)"/) ||
       html.match(/<meta[^>]*content="([^"]*)"[^>]*name="geo\.region"/);
     if (geoRegion) {
-      extracted.location = extracted.location || geoRegion[1].trim();
+      extracted.location = extracted.location || decodeHtmlEntities(geoRegion[1]).trim();
     }
 
     return extracted;

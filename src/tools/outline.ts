@@ -2,6 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getOutline, saveOutline } from "../storage/filestore";
 import { BookMCPError } from "../utils/errors";
+import { normalizeForCompare } from "../utils/text";
 
 export function registerOutlineTools(server: McpServer): void {
   server.tool(
@@ -83,7 +84,7 @@ export function registerOutlineTools(server: McpServer): void {
       let found = false;
       for (const act of outline.acts) {
         for (const ch of act.chapters) {
-          if (ch.title.toLowerCase() === chapterTitle.toLowerCase()) {
+          if (normalizeForCompare(ch.title) === normalizeForCompare(chapterTitle)) {
             if (synopsis !== undefined) ch.synopsis = synopsis;
             if (scenes !== undefined) ch.scenes = scenes;
             found = true;

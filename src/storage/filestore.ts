@@ -10,6 +10,7 @@ import {
   AuthorProfile,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
+import { toNFC } from "../utils/text";
 
 const MCP_DIR = ".book-mcp";
 const CHAPTERS_DIR = "chapters";
@@ -34,10 +35,12 @@ function ensureDir(dirPath: string): void {
 
 // Writes via a temp file + rename so a crash or concurrent read never
 // observes a partially-written file; rename is atomic on the same filesystem.
+// Everything is written as UTF-8 in NFC so an "ö" typed on macOS (o + combining
+// diaeresis) is stored the same way as one typed on Windows or Linux.
 function writeFileAtomic(filePath: string, data: string): void {
   ensureDir(path.dirname(filePath));
   const tmpPath = `${filePath}.${randomUUID()}.tmp`;
-  fs.writeFileSync(tmpPath, data, "utf-8");
+  fs.writeFileSync(tmpPath, toNFC(data), "utf-8");
   fs.renameSync(tmpPath, filePath);
 }
 
