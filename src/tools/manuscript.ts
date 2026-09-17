@@ -11,13 +11,7 @@ import {
 import { ChapterMeta } from "../storage/schema";
 import { countWords, estimateReadingTime } from "../utils/wordcount";
 import { BookMCPError } from "../utils/errors";
-
-function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+import { normalizeForCompare, slugify } from "../utils/text";
 
 export function registerManuscriptTools(server: McpServer): void {
   // book_init
@@ -87,7 +81,11 @@ export function registerManuscriptTools(server: McpServer): void {
 
       const chapterNum = order ?? registry.chapters.length + 1;
       const id = `ch-${String(chapterNum).padStart(3, "0")}`;
-      const filename = `${id}-${slugify(title)}.md`;
+      // A title with no ASCII-representable letters leaves an empty slug, so
+      // the id alone names the file rather than every such chapter sharing
+      // one filename and overwriting the previous one.
+      const slug = slugify(title);
+      const filename = slug ? `${id}-${slug}.md` : `${id}.md`;
       const chapterContent = content || `# ${title}\n\n`;
 
       writeChapterFile(filename, chapterContent);
@@ -145,7 +143,7 @@ export function registerManuscriptTools(server: McpServer): void {
       const chapter = registry.chapters.find(
         (c) =>
           c.id === chapterId ||
-          c.title.toLowerCase() === chapterId.toLowerCase()
+          normalizeForCompare(c.title) === normalizeForCompare(chapterId)
       );
       if (!chapter)
         throw new BookMCPError(`Chapter "${chapterId}" not found.`);

@@ -6,6 +6,7 @@ import {
   readChapterFile,
 } from "../storage/filestore";
 import { BookMCPError } from "../utils/errors";
+import { CAPITALIZED_WORD_PATTERN, normalizeForCompare } from "../utils/text";
 
 interface ContinuityFlag {
   type: "character" | "timeline" | "setting" | "plot_thread";
@@ -35,14 +36,14 @@ export function registerContinuityTools(server: McpServer): void {
         throw new BookMCPError(`Chapter "${chapterId}" not found.`);
 
       const content = readChapterFile(chapter.filename);
-      const contentLower = content.toLowerCase();
+      const contentLower = normalizeForCompare(content);
       const flags: ContinuityFlag[] = [];
 
       // Check character name consistency
       for (const character of bible.characters) {
-        const nameFound = contentLower.includes(character.name.toLowerCase());
+        const nameFound = contentLower.includes(normalizeForCompare(character.name));
         const aliasFound = character.aliases.some((a) =>
-          contentLower.includes(a.toLowerCase())
+          contentLower.includes(normalizeForCompare(a))
         );
 
         if (nameFound || aliasFound) {
@@ -65,7 +66,7 @@ export function registerContinuityTools(server: McpServer): void {
             for (const opp of traitOpposites) {
               if (contentLower.includes(opp)) {
                 // Check if it's near the character's name
-                const nameIdx = contentLower.indexOf(character.name.toLowerCase());
+                const nameIdx = contentLower.indexOf(normalizeForCompare(character.name));
                 const oppIdx = contentLower.indexOf(opp);
                 if (Math.abs(nameIdx - oppIdx) < 200) {
                   flags.push({
@@ -81,13 +82,15 @@ export function registerContinuityTools(server: McpServer): void {
         }
       }
 
-      // Check for characters mentioned but not in the story bible
-      const words = content.match(/[A-Z][a-z]{2,}/g) || [];
+      // Check for characters mentioned but not in the story bible.
+      // The pattern is Unicode-aware: [A-Z][a-z]{2,} never matched a name like
+      // "Jörg" or "Émile", so those characters were silently skipped here.
+      const words = content.normalize("NFC").match(CAPITALIZED_WORD_PATTERN) || [];
       const capitalizedWords = [...new Set(words)];
       const knownNames = new Set(
         bible.characters.flatMap((c) => [
-          c.name.toLowerCase(),
-          ...c.aliases.map((a) => a.toLowerCase()),
+          normalizeForCompare(c.name),
+          ...c.aliases.map((a) => normalizeForCompare(a)),
         ])
       );
       const commonWords = new Set([
@@ -107,8 +110,8 @@ export function registerContinuityTools(server: McpServer): void {
 
       for (const word of capitalizedWords) {
         if (
-          !knownNames.has(word.toLowerCase()) &&
-          !commonWords.has(word.toLowerCase()) &&
+          !knownNames.has(normalizeForCompare(word)) &&
+          !commonWords.has(normalizeForCompare(word)) &&
           word.length > 2
         ) {
           // Could be an unregistered character
@@ -132,7 +135,7 @@ export function registerContinuityTools(server: McpServer): void {
 
       // Check for setting references
       for (const setting of bible.settings) {
-        if (contentLower.includes(setting.name.toLowerCase())) {
+        if (contentLower.includes(normalizeForCompare(setting.name))) {
           // Setting is referenced — good
         }
       }
@@ -147,7 +150,7 @@ export function registerContinuityTools(server: McpServer): void {
           if (
             openedChapter &&
             chapterOrder - openedChapter.order > 5 &&
-            !contentLower.includes(thread.title.toLowerCase())
+            !contentLower.includes(normalizeForCompare(thread.title))
           ) {
             flags.push({
               type: "plot_thread",

@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getStoryBible, saveStoryBible } from "../storage/filestore";
 import { Character, Setting, PlotThread } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
+import { normalizeForCompare } from "../utils/text";
 
 function generateId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}`;
@@ -122,11 +123,12 @@ export function registerStoryBibleTools(server: McpServer): void {
     },
     async ({ nameOrId }) => {
       const bible = requireBible();
+      const needle = normalizeForCompare(nameOrId);
       const character = bible.characters.find(
         (c) =>
           c.id === nameOrId ||
-          c.name.toLowerCase() === nameOrId.toLowerCase() ||
-          c.aliases.some((a) => a.toLowerCase() === nameOrId.toLowerCase())
+          normalizeForCompare(c.name) === needle ||
+          c.aliases.some((a) => normalizeForCompare(a) === needle)
       );
       if (!character)
         throw new BookMCPError(`Character "${nameOrId}" not found.`);
@@ -211,10 +213,9 @@ export function registerStoryBibleTools(server: McpServer): void {
     },
     async ({ nameOrId }) => {
       const bible = requireBible();
+      const needle = normalizeForCompare(nameOrId);
       const setting = bible.settings.find(
-        (s) =>
-          s.id === nameOrId ||
-          s.name.toLowerCase() === nameOrId.toLowerCase()
+        (s) => s.id === nameOrId || normalizeForCompare(s.name) === needle
       );
       if (!setting)
         throw new BookMCPError(`Setting "${nameOrId}" not found.`);

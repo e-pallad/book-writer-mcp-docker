@@ -2,6 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getStyleGuide, saveStyleGuide } from "../storage/filestore";
 import { BookMCPError } from "../utils/errors";
+import { normalizeForCompare, wholeWordRegExp } from "../utils/text";
 
 export function registerStyleGuideTools(server: McpServer): void {
   server.tool(
@@ -97,8 +98,10 @@ export function registerStyleGuideTools(server: McpServer): void {
 
       // Check things to avoid
       for (const avoidance of guide.thingsToAvoid) {
-        const regex = new RegExp(`\\b${avoidance.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi");
-        const matches = passage.match(regex);
+        // Unicode-aware boundaries: \b would never match a term that starts or
+        // ends with a non-ASCII letter, so "Übertreibung" went unflagged.
+        const regex = wholeWordRegExp(avoidance);
+        const matches = passage.normalize("NFC").match(regex);
         if (matches) {
           violations.push({
             rule: `Avoid: "${avoidance}"`,
@@ -234,7 +237,7 @@ export function registerStyleGuideTools(server: McpServer): void {
       if (!guide.influences) guide.influences = [];
       const before = guide.influences.length;
       guide.influences = guide.influences.filter(
-        (i) => i.author.toLowerCase() !== author.toLowerCase()
+        (i) => normalizeForCompare(i.author) !== normalizeForCompare(author)
       );
       const removed = before - guide.influences.length;
       saveStyleGuide(guide);
