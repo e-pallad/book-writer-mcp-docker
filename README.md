@@ -11,7 +11,7 @@ This is a [Model Context Protocol](https://modelcontextprotocol.io) server that 
 - **Start a book in one sentence.** Describe your idea. The AI initializes the project, creates your outline, and begins drafting chapters.
 - **Stay consistent across 100,000 words.** A story bible tracks every character, setting, and plot thread. Continuity checking catches contradictions before they become rewrites.
 - **Write in your voice.** A style guide captures your tone, POV, tense, influences, and patterns to avoid — so every chapter sounds like *you*, not generic AI.
-- **See your book take shape.** A built-in HTML preview renders your manuscript with beautiful book typography ��� Playfair Display headings, drop caps, justified text, ornamental dividers. The preview server auto-refreshes every 10 seconds; run `book_export_markdown` after editing chapters to update the preview.
+- **See your book take shape.** A built-in HTML preview renders your manuscript with beautiful book typography — Playfair Display headings, drop caps, justified text, ornamental dividers. The preview server auto-refreshes every 10 seconds; run `book_export_markdown` after editing chapters to update the preview.
 - **Export to real formats.** One command compiles your manuscript to clean Markdown or a formatted `.docx` with title page, table of contents, page numbers, and configurable fonts/spacing.
 - **Design your cover.** Generate KDP-compliant cover specs with mood, color palettes, typography, and AI image prompts ready for DALL-E, Midjourney, or Stable Diffusion.
 - **Build your author profile.** Pull from LinkedIn or write manually — generates polished bios for your back cover and marketing.
