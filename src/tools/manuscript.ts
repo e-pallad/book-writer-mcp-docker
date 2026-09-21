@@ -3,15 +3,257 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getRegistry,
   saveRegistry,
+  getStoryBible,
+  getOutline,
+  saveOutline,
   initProject,
   readChapterFile,
   writeChapterFile,
+  renameChapterFile,
+  trashChapterFile,
   getProjectPaths,
 } from "../storage/filestore";
-import { ChapterMeta } from "../storage/schema";
+import { ChapterMeta, Registry } from "../storage/schema";
 import { countWords, estimateReadingTime } from "../utils/wordcount";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare, slugify } from "../utils/text";
+
+// Chapters are addressed by id ("ch-002") everywhere, but an author thinks in
+// titles. Every chapter tool accepts either, so "rename 'Der Anfang'" works
+// without looking the id up first.
+function resolveChapter(registry: Registry, ref: string): ChapterMeta {
+  const byId = registry.chapters.find((c) => c.id === ref);
+  if (byId) return byId;
+
+  const matches = registry.chapters.filter(
+    (c) => normalizeForCompare(c.title) === normalizeForCompare(ref)
+  );
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    throw new BookMCPError(
+      `Several chapters are titled "${ref}": ${matches
+        .map((c) => c.id)
+        .join(", ")}. Use the chapter id instead.`
+    );
+  }
+
+  throw new BookMCPError(
+    `Chapter "${ref}" not found. Known chapters: ${
+      registry.chapters.map((c) => `${c.id} ("${c.title}")`).join(", ") || "none"
+    }`
+  );
+}
+
+// Ids must stay unique and stable: the story bible, the timeline and plot
+// threads all point at them. Counting chapters is not enough once a chapter in
+// the middle has been deleted (3 chapters minus one would hand out "ch-003"
+// again), so the highest id ever used decides the next one.
+function nextChapterId(registry: Registry): string {
+  let highest = 0;
+  for (const chapter of registry.chapters) {
+    const match = /^ch-(\d+)$/.exec(chapter.id);
+    if (match) highest = Math.max(highest, parseInt(match[1], 10));
+  }
+  return `ch-${String(highest + 1).padStart(3, "0")}`;
+}
+
+// A title with no ASCII-representable letters leaves an empty slug, so the id
+// alone names the file rather than every such chapter sharing one filename and
+// overwriting the previous one.
+function chapterFilename(id: string, title: string): string {
+  const slug = slugify(title);
+  return slug ? `${id}-${slug}.md` : `${id}.md`;
+}
+
+// The first ATX heading of a chapter file. "## Scene" does not match: after the
+// optional indent the next character must be the only "#".
+const H1_PATTERN = /^[ \t]{0,3}#[ \t]+(.+?)[ \t]*#*[ \t]*$/m;
+
+// The exported manuscript is built from the chapter files, not from the
+// registry, so a rename that only touched the registry would still export the
+// old title. The heading is rewritten when it still spells out the old title;
+// a heading the author has customised ("# Kapitel 3 — Der Anfang") is left
+// alone and reported instead of being silently overwritten.
+function retitleContent(
+  content: string,
+  oldTitle: string,
+  newTitle: string
+): { content: string; headingUpdated: boolean } {
+  const match = H1_PATTERN.exec(content);
+  if (!match) return { content, headingUpdated: false };
+  if (normalizeForCompare(match[1]) !== normalizeForCompare(oldTitle)) {
+    return { content, headingUpdated: false };
+  }
+
+  const heading = match[0];
+  const start = match.index;
+  return {
+    content:
+      content.slice(0, start) +
+      // A function replacement: a title containing "$&" or "$1" would
+      // otherwise be read as a replacement pattern.
+      heading.replace(/#[ \t]+.*$/, () => `# ${newTitle}`) +
+      content.slice(start + heading.length),
+    headingUpdated: true,
+  };
+}
+
+// The outline stores chapters by title, so a renamed chapter would otherwise
+// lose its outline entry.
+function renameInOutline(oldTitle: string, newTitle: string): boolean {
+  const outline = getOutline();
+  if (!outline) return false;
+
+  let renamed = false;
+  for (const act of outline.acts) {
+    for (const chapter of act.chapters) {
+      if (normalizeForCompare(chapter.title) === normalizeForCompare(oldTitle)) {
+        chapter.title = newTitle;
+        renamed = true;
+      }
+    }
+  }
+  if (renamed) saveOutline(outline);
+  return renamed;
+}
+
+// Everything that points at a chapter by id or by title, so a delete can say
+// what it leaves dangling instead of quietly breaking continuity checks.
+function findReferences(chapter: ChapterMeta): string[] {
+  const references: string[] = [];
+
+  const bible = getStoryBible();
+  if (bible) {
+    for (const character of bible.characters) {
+      if (character.firstAppearance === chapter.id) {
+        references.push(
+          `Character "${character.name}" has firstAppearance "${chapter.id}".`
+        );
+      }
+    }
+    for (const thread of bible.plotThreads) {
+      if (thread.openedIn === chapter.id) {
+        references.push(`Plot thread "${thread.title}" opens in "${chapter.id}".`);
+      }
+      if (thread.resolvedIn === chapter.id) {
+        references.push(
+          `Plot thread "${thread.title}" resolves in "${chapter.id}".`
+        );
+      }
+    }
+    for (const event of bible.timeline) {
+      if (event.chapterId === chapter.id) {
+        references.push(`Timeline event "${event.event}" is set in "${chapter.id}".`);
+      }
+    }
+  }
+
+  const outline = getOutline();
+  if (outline) {
+    for (const act of outline.acts) {
+      for (const outlineChapter of act.chapters) {
+        if (
+          normalizeForCompare(outlineChapter.title) ===
+          normalizeForCompare(chapter.title)
+        ) {
+          references.push(
+            `The outline still contains a chapter titled "${chapter.title}".`
+          );
+        }
+      }
+    }
+  }
+
+  return references;
+}
+
+function requireProject(): Registry {
+  const registry = getRegistry();
+  if (!registry)
+    throw new BookMCPError("No book project found. Run book_init first.");
+  return registry;
+}
+
+// Applies a new title to a chapter: registry entry, file name and the heading
+// inside the file. Shared by book_chapter_rename and book_chapter_update so
+// both routes leave the project in the same state.
+function applyTitle(
+  registry: Registry,
+  chapter: ChapterMeta,
+  newTitle: string,
+  options: { updateOutline: boolean }
+): { warnings: string[]; details: Record<string, unknown> } {
+  const trimmed = newTitle.trim();
+  if (!trimmed) throw new BookMCPError("A chapter title cannot be empty.");
+
+  const oldTitle = chapter.title;
+  const oldFilename = chapter.filename;
+  const warnings: string[] = [];
+
+  const duplicate = registry.chapters.find(
+    (c) =>
+      c.id !== chapter.id &&
+      normalizeForCompare(c.title) === normalizeForCompare(trimmed)
+  );
+  if (duplicate) {
+    warnings.push(
+      `Chapter "${duplicate.id}" carries the same title. Both chapters can only be addressed by id from now on.`
+    );
+  }
+
+  const newFilename = chapterFilename(chapter.id, trimmed);
+  const content = readChapterFile(oldFilename);
+  const { content: retitled, headingUpdated } = retitleContent(
+    content,
+    oldTitle,
+    trimmed
+  );
+
+  // Rename first: it is the step that can fail on a name collision, and
+  // failing before anything was written leaves the project untouched.
+  const fileRenamed = renameChapterFile(oldFilename, newFilename);
+  // Even when nothing was renamed (a chapter registered but never written to
+  // disk) the registry points at the name the file will get.
+  chapter.filename = newFilename;
+  chapter.title = trimmed;
+  chapter.updatedAt = new Date().toISOString();
+
+  if (headingUpdated) {
+    writeChapterFile(chapter.filename, retitled);
+  } else if (content) {
+    warnings.push(
+      `The heading inside "chapters/${chapter.filename}" does not spell out the old title and was left unchanged. Edit it with book_chapter_update if the export should show the new title.`
+    );
+  }
+
+  const outlineRenamed = options.updateOutline
+    ? renameInOutline(oldTitle, trimmed)
+    : false;
+
+  return {
+    warnings,
+    details: {
+      previousTitle: oldTitle,
+      title: trimmed,
+      previousFilename: oldFilename,
+      filename: chapter.filename,
+      fileRenamed,
+      headingUpdated,
+      outlineUpdated: outlineRenamed,
+    },
+  };
+}
+
+function jsonResult(payload: unknown) {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(payload, null, 2),
+      },
+    ],
+  };
+}
 
 export function registerManuscriptTools(server: McpServer): void {
   // book_init
@@ -31,28 +273,17 @@ export function registerManuscriptTools(server: McpServer): void {
     async ({ title, author, genre, targetWordCount }) => {
       const registry = initProject(title, author, genre, targetWordCount);
       const paths = getProjectPaths();
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: `Book project "${title}" initialized successfully.`,
-                paths: {
-                  registry: paths.registryPath,
-                  storyBible: paths.storyBiblePath,
-                  styleGuide: paths.styleGuidePath,
-                  outline: paths.outlinePath,
-                  chapters: paths.chaptersDir,
-                },
-                registry,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return jsonResult({
+        message: `Book project "${title}" initialized successfully.`,
+        paths: {
+          registry: paths.registryPath,
+          storyBible: paths.storyBiblePath,
+          styleGuide: paths.styleGuidePath,
+          outline: paths.outlinePath,
+          chapters: paths.chaptersDir,
+        },
+        registry,
+      });
     }
   );
 
@@ -73,26 +304,24 @@ export function registerManuscriptTools(server: McpServer): void {
         .describe("Optional initial draft content"),
     },
     async ({ title, synopsis, order, content }) => {
-      const registry = getRegistry();
-      if (!registry)
-        throw new BookMCPError(
-          "No book project found. Run book_init first."
-        );
+      const registry = requireProject();
 
+      const trimmedTitle = title.trim();
+      if (!trimmedTitle)
+        throw new BookMCPError("A chapter title cannot be empty.");
+
+      // The id is independent of the position: two chapters may share an order
+      // slot while being reordered, and a deleted chapter must not free its id.
+      const id = nextChapterId(registry);
       const chapterNum = order ?? registry.chapters.length + 1;
-      const id = `ch-${String(chapterNum).padStart(3, "0")}`;
-      // A title with no ASCII-representable letters leaves an empty slug, so
-      // the id alone names the file rather than every such chapter sharing
-      // one filename and overwriting the previous one.
-      const slug = slugify(title);
-      const filename = slug ? `${id}-${slug}.md` : `${id}.md`;
-      const chapterContent = content || `# ${title}\n\n`;
+      const filename = chapterFilename(id, trimmedTitle);
+      const chapterContent = content || `# ${trimmedTitle}\n\n`;
 
       writeChapterFile(filename, chapterContent);
 
       const meta: ChapterMeta = {
         id,
-        title,
+        title: trimmedTitle,
         filename,
         status: content ? "draft" : "outline",
         wordCount: countWords(chapterContent),
@@ -105,24 +334,13 @@ export function registerManuscriptTools(server: McpServer): void {
       registry.chapters.sort((a, b) => a.order - b.order);
       saveRegistry(registry);
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: `Chapter "${title}" created.`,
-                chapterId: id,
-                filename,
-                path: `chapters/${filename}`,
-                meta,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return jsonResult({
+        message: `Chapter "${trimmedTitle}" created.`,
+        chapterId: id,
+        filename,
+        path: `chapters/${filename}`,
+        meta,
+      });
     }
   );
 
@@ -136,73 +354,190 @@ export function registerManuscriptTools(server: McpServer): void {
         .describe('Chapter ID (e.g. "ch-001") or chapter title'),
     },
     async ({ chapterId }) => {
-      const registry = getRegistry();
-      if (!registry)
-        throw new BookMCPError("No book project found. Run book_init first.");
-
-      const chapter = registry.chapters.find(
-        (c) =>
-          c.id === chapterId ||
-          normalizeForCompare(c.title) === normalizeForCompare(chapterId)
-      );
-      if (!chapter)
-        throw new BookMCPError(`Chapter "${chapterId}" not found.`);
-
+      const registry = requireProject();
+      const chapter = resolveChapter(registry, chapterId);
       const content = readChapterFile(chapter.filename);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ meta: chapter, content }, null, 2),
-          },
-        ],
-      };
+      return jsonResult({ meta: chapter, content });
     }
   );
 
   // book_chapter_update
   server.tool(
     "book_chapter_update",
-    "Write updated content to a chapter file",
+    "Update a chapter: content, title, synopsis and/or status. Every field is optional, so it can retitle a chapter without touching its prose.",
     {
-      chapterId: z.string().describe("Chapter ID"),
-      content: z.string().describe("Full updated chapter content"),
+      chapterId: z
+        .string()
+        .describe('Chapter ID (e.g. "ch-001") or current chapter title'),
+      content: z
+        .string()
+        .optional()
+        .describe("Full updated chapter content (leave out to keep the prose)"),
+      title: z
+        .string()
+        .optional()
+        .describe("New chapter title (renames the file and the heading too)"),
+      synopsis: z.string().optional().describe("Updated chapter synopsis"),
       status: z
         .enum(["outline", "draft", "review", "final"])
         .optional()
         .describe("Updated chapter status"),
     },
-    async ({ chapterId, content, status }) => {
-      const registry = getRegistry();
-      if (!registry)
-        throw new BookMCPError("No book project found. Run book_init first.");
+    async ({ chapterId, content, title, synopsis, status }) => {
+      const registry = requireProject();
+      const chapter = resolveChapter(registry, chapterId);
 
-      const chapter = registry.chapters.find((c) => c.id === chapterId);
-      if (!chapter)
-        throw new BookMCPError(`Chapter "${chapterId}" not found.`);
+      if (
+        content === undefined &&
+        title === undefined &&
+        synopsis === undefined &&
+        status === undefined
+      ) {
+        throw new BookMCPError(
+          "Nothing to update: pass at least one of content, title, synopsis or status."
+        );
+      }
 
-      writeChapterFile(chapter.filename, content);
-      chapter.wordCount = countWords(content);
+      const warnings: string[] = [];
+      let renameDetails: Record<string, unknown> | undefined;
+
+      if (title !== undefined) {
+        const result = applyTitle(registry, chapter, title, {
+          updateOutline: true,
+        });
+        warnings.push(...result.warnings);
+        renameDetails = result.details;
+      }
+
+      if (content !== undefined) {
+        writeChapterFile(chapter.filename, content);
+        chapter.wordCount = countWords(content);
+      }
+      if (synopsis !== undefined) chapter.synopsis = synopsis;
       if (status) chapter.status = status;
       chapter.updatedAt = new Date().toISOString();
       saveRegistry(registry);
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: `Chapter "${chapter.title}" updated.`,
-                wordCount: chapter.wordCount,
-                meta: chapter,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return jsonResult({
+        message: `Chapter "${chapter.title}" updated.`,
+        wordCount: chapter.wordCount,
+        meta: chapter,
+        ...(renameDetails ? { rename: renameDetails } : {}),
+        ...(warnings.length ? { warnings } : {}),
+      });
+    }
+  );
+
+  // book_chapter_rename
+  server.tool(
+    "book_chapter_rename",
+    "Rename a chapter: updates the registry, the chapter file name, the heading inside the file and the matching outline entry",
+    {
+      chapterId: z
+        .string()
+        .describe('Chapter ID (e.g. "ch-001") or current chapter title'),
+      title: z.string().describe("New chapter title"),
+      synopsis: z
+        .string()
+        .optional()
+        .describe("Optionally update the synopsis in the same call"),
+      updateOutline: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          "Also rename the chapter in the outline when it is listed there (default: true)"
+        ),
+    },
+    async ({ chapterId, title, synopsis, updateOutline }) => {
+      const registry = requireProject();
+      const chapter = resolveChapter(registry, chapterId);
+
+      const { warnings, details } = applyTitle(registry, chapter, title, {
+        updateOutline,
+      });
+      if (synopsis !== undefined) chapter.synopsis = synopsis;
+      saveRegistry(registry);
+
+      return jsonResult({
+        message: `Chapter "${details.previousTitle}" renamed to "${chapter.title}".`,
+        chapterId: chapter.id,
+        path: `chapters/${chapter.filename}`,
+        ...details,
+        meta: chapter,
+        ...(warnings.length ? { warnings } : {}),
+      });
+    }
+  );
+
+  // book_chapter_delete
+  server.tool(
+    "book_chapter_delete",
+    "Delete a chapter from the manuscript. The chapter file is moved to .book-mcp/trash/ so it can be recovered by hand.",
+    {
+      chapterId: z
+        .string()
+        .describe('Chapter ID (e.g. "ch-001") or chapter title'),
+      confirm: z
+        .boolean()
+        .describe(
+          "Must be true. Guards against deleting a chapter by accident — deleting removes prose from the manuscript."
+        ),
+      keepFile: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "Keep the markdown file in chapters/ and only unregister the chapter (default: false)"
+        ),
+    },
+    async ({ chapterId, confirm, keepFile }) => {
+      const registry = requireProject();
+      const chapter = resolveChapter(registry, chapterId);
+
+      if (!confirm) {
+        throw new BookMCPError(
+          `Chapter "${chapter.id}" ("${chapter.title}", ${chapter.wordCount} words) was not deleted. Call book_chapter_delete again with confirm=true to delete it.`
+        );
+      }
+
+      const references = findReferences(chapter);
+      const trashedPath = keepFile ? null : trashChapterFile(chapter.filename);
+
+      registry.chapters = registry.chapters.filter((c) => c.id !== chapter.id);
+      // Deleting from the middle leaves a gap, so positions are closed up.
+      // Ids stay as they are: the story bible and the timeline point at them.
+      registry.chapters.sort((a, b) => a.order - b.order);
+      registry.chapters.forEach((c, index) => {
+        c.order = index + 1;
+      });
+      saveRegistry(registry);
+
+      return jsonResult({
+        message: `Chapter "${chapter.title}" (${chapter.id}) deleted.`,
+        deleted: {
+          id: chapter.id,
+          title: chapter.title,
+          wordCount: chapter.wordCount,
+          status: chapter.status,
+        },
+        file: keepFile
+          ? `Left in place at chapters/${chapter.filename}.`
+          : trashedPath
+          ? `Moved to ${trashedPath}.`
+          : "No chapter file existed on disk.",
+        chapters: registry.chapters.map((c) => ({
+          id: c.id,
+          title: c.title,
+          order: c.order,
+        })),
+        ...(references.length
+          ? {
+              danglingReferences: references,
+              hint: "These still point at the deleted chapter. Update them with the story bible and outline tools.",
+            }
+          : {}),
+      });
     }
   );
 
@@ -212,9 +547,7 @@ export function registerManuscriptTools(server: McpServer): void {
     "List all chapters with status and word counts",
     {},
     async () => {
-      const registry = getRegistry();
-      if (!registry)
-        throw new BookMCPError("No book project found. Run book_init first.");
+      const registry = requireProject();
 
       const table = registry.chapters.map((c) => ({
         id: c.id,
@@ -225,14 +558,7 @@ export function registerManuscriptTools(server: McpServer): void {
         order: c.order,
       }));
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ chapters: table }, null, 2),
-          },
-        ],
-      };
+      return jsonResult({ chapters: table });
     }
   );
 
@@ -241,21 +567,18 @@ export function registerManuscriptTools(server: McpServer): void {
     "book_chapter_reorder",
     "Change chapter order",
     {
-      chapterId: z.string().describe("Chapter ID to reorder"),
+      chapterId: z
+        .string()
+        .describe('Chapter ID (e.g. "ch-001") or chapter title'),
       newOrder: z.number().describe("New order position"),
     },
     async ({ chapterId, newOrder }) => {
-      const registry = getRegistry();
-      if (!registry)
-        throw new BookMCPError("No book project found. Run book_init first.");
-
-      const chapter = registry.chapters.find((c) => c.id === chapterId);
-      if (!chapter)
-        throw new BookMCPError(`Chapter "${chapterId}" not found.`);
+      const registry = requireProject();
+      const chapter = resolveChapter(registry, chapterId);
 
       const oldOrder = chapter.order;
       for (const c of registry.chapters) {
-        if (c.id === chapterId) {
+        if (c.id === chapter.id) {
           c.order = newOrder;
         } else if (oldOrder < newOrder && c.order > oldOrder && c.order <= newOrder) {
           c.order--;
@@ -266,25 +589,14 @@ export function registerManuscriptTools(server: McpServer): void {
       registry.chapters.sort((a, b) => a.order - b.order);
       saveRegistry(registry);
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: `Chapter "${chapter.title}" moved to position ${newOrder}.`,
-                chapters: registry.chapters.map((c) => ({
-                  id: c.id,
-                  title: c.title,
-                  order: c.order,
-                })),
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return jsonResult({
+        message: `Chapter "${chapter.title}" moved to position ${newOrder}.`,
+        chapters: registry.chapters.map((c) => ({
+          id: c.id,
+          title: c.title,
+          order: c.order,
+        })),
+      });
     }
   );
 
@@ -294,9 +606,7 @@ export function registerManuscriptTools(server: McpServer): void {
     "Return manuscript-wide statistics",
     {},
     async () => {
-      const registry = getRegistry();
-      if (!registry)
-        throw new BookMCPError("No book project found. Run book_init first.");
+      const registry = requireProject();
 
       const totalWordCount = registry.chapters.reduce(
         (sum, c) => sum + c.wordCount,
@@ -307,27 +617,16 @@ export function registerManuscriptTools(server: McpServer): void {
         byStatus[c.status] = (byStatus[c.status] || 0) + 1;
       }
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                totalWordCount,
-                targetWordCount: registry.targetWordCount,
-                percentComplete: Math.round(
-                  (totalWordCount / registry.targetWordCount) * 100
-                ),
-                chapterCount: registry.chapters.length,
-                byStatus,
-                estimatedReadingTimeMinutes: estimateReadingTime(totalWordCount),
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return jsonResult({
+        totalWordCount,
+        targetWordCount: registry.targetWordCount,
+        percentComplete: Math.round(
+          (totalWordCount / registry.targetWordCount) * 100
+        ),
+        chapterCount: registry.chapters.length,
+        byStatus,
+        estimatedReadingTimeMinutes: estimateReadingTime(totalWordCount),
+      });
     }
   );
 }

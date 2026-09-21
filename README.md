@@ -162,7 +162,9 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_init` | Initialize a new book project |
 | `book_chapter_create` | Create a new chapter |
 | `book_chapter_read` | Read a chapter's content and metadata |
-| `book_chapter_update` | Write updated content to a chapter |
+| `book_chapter_update` | Update a chapter's content, title, synopsis or status |
+| `book_chapter_rename` | Rename a chapter (registry, file name, heading, outline) |
+| `book_chapter_delete` | Delete a chapter (file moves to `.book-mcp/trash/`) |
 | `book_chapter_list` | List all chapters with status and word counts |
 | `book_chapter_reorder` | Change chapter order |
 | `book_stats` | Manuscript-wide statistics |
@@ -236,6 +238,31 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_author_update_intro` | Directly edit the generated bio |
 | `book_author_get_profile` | Retrieve the full author profile |
 
+## Renaming and Deleting Chapters
+
+Chapter titles are not frozen at creation. `book_chapter_rename` changes a
+chapter title everywhere it is stored:
+
+- the entry in `registry.json`,
+- the chapter file name (`ch-002-old-title.md` becomes `ch-002-new-title.md`),
+- the `# Heading` inside the chapter file, so exports and previews show the new
+  title (a heading you customised by hand is reported instead of overwritten),
+- the matching chapter in `outline.json`, which is keyed by title.
+
+`book_chapter_update` accepts `title` and `synopsis` too, so metadata can be
+changed without resubmitting the prose — every field of that tool is optional
+apart from the chapter itself.
+
+`book_chapter_delete` removes a chapter from the manuscript. It requires
+`confirm: true`, moves the markdown file to `.book-mcp/trash/` instead of
+deleting it outright, closes the gap in the chapter order, and reports anything
+in the story bible, timeline or outline that still points at the deleted
+chapter. Chapter ids are never reused, so surviving references keep pointing at
+the chapter they were written for.
+
+Both tools (and every other chapter tool) accept either a chapter id or the
+current chapter title.
+
 ## Project Structure
 
 When you initialize a book, the MCP creates this structure in your project directory:
@@ -249,6 +276,7 @@ your-book/
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
     author-profile.json # Author bio and profile data
+    trash/              # Chapter files removed by book_chapter_delete
   chapters/
     ch-001-your-first-chapter.md
     ch-002-the-next-one.md

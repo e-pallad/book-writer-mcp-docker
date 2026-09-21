@@ -22,6 +22,16 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 6. `book_continuity_check` — run before marking as review/final
 7. `book_style_check` — verify voice consistency
 
+## Workflow for Revising the Chapter List
+- `book_chapter_rename` — change a chapter title; it also renames the file, the
+  heading inside it and the outline entry
+- `book_chapter_update title=...` — same rename, when content or status changes
+  in the same call
+- `book_chapter_delete confirm=true` — remove a chapter; the file is moved to
+  `.book-mcp/trash/` and any story bible, timeline or outline reference that is
+  left dangling is reported back
+- `book_chapter_reorder` — move a chapter to a different position
+
 ## Workflow for Exporting
 1. `book_stats` — confirm completeness
 2. `book_plot_threads_list status=open` — warn author of unresolved threads
@@ -32,3 +42,6 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 - NEVER invent character details — always check story bible first
 - Run continuity check before marking any chapter "final"
 - Keep synopsis fields updated as chapters evolve
+- Retitle chapters with book_chapter_rename, never by re-creating them — a new
+  chapter gets a new id and orphans the story bible references
+- After book_chapter_delete, fix the dangling references it reports
