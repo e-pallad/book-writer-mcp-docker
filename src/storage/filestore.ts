@@ -14,6 +14,7 @@ import { toNFC } from "../utils/text";
 
 const MCP_DIR = ".book-mcp";
 const CHAPTERS_DIR = "chapters";
+const TRASH_DIR = "trash";
 
 function getProjectDir(): string {
   return process.env.BOOK_PROJECT_DIR || process.cwd();
@@ -116,6 +117,45 @@ export function writeChapterFile(filename: string, content: string): void {
   writeFileAtomic(chaptersPath(filename), content);
 }
 
+// Renames a chapter file so the file name keeps matching the chapter title.
+// Returns false when there is nothing on disk to rename (a chapter that was
+// registered but never written), so callers can still update the registry.
+export function renameChapterFile(oldName: string, newName: string): boolean {
+  if (oldName === newName) return false;
+  const from = chaptersPath(oldName);
+  if (!fs.existsSync(from)) return false;
+  const to = chaptersPath(newName);
+  if (fs.existsSync(to)) {
+    throw new BookMCPError(
+      `Cannot rename chapter file: "chapters/${newName}" already exists.`
+    );
+  }
+  ensureDir(path.dirname(to));
+  fs.renameSync(from, to);
+  return true;
+}
+
+// Deleting a chapter throws away prose, so the file is moved into
+// .book-mcp/trash/ instead of being unlinked: a mistaken delete stays
+// recoverable by hand. Returns the trash path, or null when no file existed.
+export function trashChapterFile(filename: string): string | null {
+  const from = chaptersPath(filename);
+  if (!fs.existsSync(from)) return null;
+
+  const trashDir = mcpPath(TRASH_DIR);
+  ensureDir(trashDir);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  let to = path.join(trashDir, `${stamp}-${filename}`);
+  // A second delete of the same file within the same millisecond would
+  // otherwise overwrite the first copy.
+  let counter = 1;
+  while (fs.existsSync(to)) {
+    to = path.join(trashDir, `${stamp}-${counter++}-${filename}`);
+  }
+  fs.renameSync(from, to);
+  return to;
+}
+
 // Story Bible
 export function getStoryBible(): StoryBible | null {
   return readJSON<StoryBible>(mcpPath("story-bible.json"));
@@ -166,6 +206,7 @@ export function getProjectPaths() {
     projectDir: getProjectDir(),
     mcpDir: mcpPath(),
     chaptersDir: chaptersPath(),
+    trashDir: mcpPath(TRASH_DIR),
     registryPath: mcpPath("registry.json"),
     storyBiblePath: mcpPath("story-bible.json"),
     styleGuidePath: mcpPath("style-guide.json"),
