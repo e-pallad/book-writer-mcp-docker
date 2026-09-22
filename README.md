@@ -190,6 +190,8 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_chapter_delete` | Delete a chapter (file moves to `.book-mcp/trash/`) |
 | `book_chapter_list` | List all chapters with status and word counts |
 | `book_chapter_reorder` | Change chapter order |
+| `book_chapter_history_list` | List a chapter's saved versions with a per-version diff summary |
+| `book_chapter_revert` | Restore a saved version (the text it replaces is saved first) |
 | `book_stats` | Manuscript-wide statistics |
 
 ### Story Bible (world-building & continuity)
@@ -280,11 +282,61 @@ apart from the chapter itself.
 `confirm: true`, moves the markdown file to `.book-mcp/trash/` instead of
 deleting it outright, closes the gap in the chapter order, and reports anything
 in the story bible, timeline or outline that still points at the deleted
-chapter. Chapter ids are never reused, so surviving references keep pointing at
-the chapter they were written for.
+chapter.
+
+Deleting a chapter from the middle leaves its id retired: the ids around it do
+not shift, so references written against them keep pointing at the chapter they
+were written for. Deleting the **last** chapter is the exception — the next id
+is derived from the highest one still registered, so the id it gave up is handed
+to the next chapter created. That is why a delete also moves the chapter's saved
+versions to `.book-mcp/trash/`: a new chapter must never inherit the revision
+history of the one it replaced.
 
 Both tools (and every other chapter tool) accept either a chapter id or the
 current chapter title.
+
+## Chapter Version History
+
+Every `book_chapter_update` that changes the prose files the previous text away
+first, under `.book-mcp/history/<chapter-id>/<timestamp>.md`. Nothing has to be
+switched on, and an update that only touches the title, synopsis or status does
+not create a version — neither does resubmitting prose that is byte-identical to
+what is already there.
+
+The last **20** versions of each chapter are kept; older ones are pruned as new
+ones arrive.
+
+`book_chapter_history_list` shows what is available, newest first, with each
+version's word count and how many lines separate it from the chapter as it
+stands now:
+
+```json
+{
+  "snapshots": [
+    {
+      "timestamp": "2026-09-22T14-30-00-000Z",
+      "savedAt": "2026-09-22T14:30:00.000Z",
+      "wordCount": 2140,
+      "versusCurrent": {
+        "linesAdded": 12,
+        "linesRemoved": 4,
+        "summary": "+12 / -4 lines to reach the current version"
+      }
+    }
+  ]
+}
+```
+
+`book_chapter_revert` restores one of them. It files the text it is about to
+replace as a new version first, so a revert is itself undoable — the response
+names the timestamp to revert to if you change your mind:
+
+```
+book_chapter_revert chapterId="ch-003" timestamp="2026-09-22T14-30-00-000Z"
+```
+
+Versions are stored per chapter **id**, not per file name, so renaming a chapter
+keeps its history with it.
 
 ## Project Structure
 
@@ -298,6 +350,7 @@ your-book/
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
+    history/            # Saved chapter versions, one folder per chapter id
     author-profile.json # Author bio and profile data
     trash/              # Chapter files removed by book_chapter_delete
   chapters/

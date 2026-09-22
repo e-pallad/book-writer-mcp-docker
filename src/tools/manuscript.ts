@@ -17,11 +17,12 @@ import { ChapterMeta, Registry } from "../storage/schema";
 import { countWords, estimateReadingTime } from "../utils/wordcount";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare, slugify } from "../utils/text";
+import { snapshotIfChanged, trashHistory } from "../storage/history";
 
 // Chapters are addressed by id ("ch-002") everywhere, but an author thinks in
 // titles. Every chapter tool accepts either, so "rename 'Der Anfang'" works
 // without looking the id up first.
-function resolveChapter(registry: Registry, ref: string): ChapterMeta {
+export function resolveChapter(registry: Registry, ref: string): ChapterMeta {
   const byId = registry.chapters.find((c) => c.id === ref);
   if (byId) return byId;
 
@@ -167,7 +168,7 @@ function findReferences(chapter: ChapterMeta): string[] {
   return references;
 }
 
-function requireProject(): Registry {
+export function requireProject(): Registry {
   const registry = getRegistry();
   if (!registry)
     throw new BookMCPError("No book project found. Run book_init first.");
@@ -401,6 +402,15 @@ export function registerManuscriptTools(server: McpServer): void {
       const warnings: string[] = [];
       let renameDetails: Record<string, unknown> | undefined;
 
+      // The previous prose is filed away before anything in this call changes
+      // it. This runs ahead of applyTitle because a rename rewrites the
+      // heading and moves the file, so a snapshot taken afterwards would
+      // already carry part of the new state.
+      const snapshotTimestamp =
+        content !== undefined
+          ? snapshotIfChanged(chapter.id, chapter.filename, content)
+          : null;
+
       if (title !== undefined) {
         const result = applyTitle(registry, chapter, title, {
           updateOutline: true,
@@ -422,6 +432,12 @@ export function registerManuscriptTools(server: McpServer): void {
         message: `Chapter "${chapter.title}" updated.`,
         wordCount: chapter.wordCount,
         meta: chapter,
+        ...(snapshotTimestamp
+          ? {
+              previousVersionSaved: snapshotTimestamp,
+              hint: "Use book_chapter_history_list to review earlier versions, or book_chapter_revert to restore one.",
+            }
+          : {}),
         ...(renameDetails ? { rename: renameDetails } : {}),
         ...(warnings.length ? { warnings } : {}),
       });
@@ -503,6 +519,9 @@ export function registerManuscriptTools(server: McpServer): void {
 
       const references = findReferences(chapter);
       const trashedPath = keepFile ? null : trashChapterFile(chapter.filename);
+      // Ids are reused once the highest chapter is deleted, so the revisions
+      // go with the chapter rather than waiting for its successor.
+      const trashedHistory = keepFile ? null : trashHistory(chapter.id);
 
       registry.chapters = registry.chapters.filter((c) => c.id !== chapter.id);
       // Deleting from the middle leaves a gap, so positions are closed up.
@@ -526,6 +545,11 @@ export function registerManuscriptTools(server: McpServer): void {
           : trashedPath
           ? `Moved to ${trashedPath}.`
           : "No chapter file existed on disk.",
+        ...(trashedHistory
+          ? {
+              history: `${trashedHistory.count} saved version(s) moved to ${trashedHistory.path}.`,
+            }
+          : {}),
         chapters: registry.chapters.map((c) => ({
           id: c.id,
           title: c.title,

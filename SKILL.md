@@ -32,6 +32,15 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
   left dangling is reported back
 - `book_chapter_reorder` — move a chapter to a different position
 
+## Workflow for Revising a Chapter
+1. `book_chapter_history_list` — see what earlier versions exist and how far
+   each one is from the current text
+2. Draft the revision and save it with `book_chapter_update content=...` — the
+   previous prose is filed away automatically, no separate step needed
+3. `book_chapter_revert chapterId=... timestamp=...` — restore an earlier
+   version if the revision went the wrong way; the text it replaces is saved
+   first, so the revert can itself be reverted
+
 ## Workflow for Exporting
 1. `book_stats` — confirm completeness
 2. `book_plot_threads_list status=open` — warn author of unresolved threads
@@ -45,3 +54,7 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 - Retitle chapters with book_chapter_rename, never by re-creating them — a new
   chapter gets a new id and orphans the story bible references
 - After book_chapter_delete, fix the dangling references it reports
+- NEVER hand-copy a chapter somewhere to keep a backup before rewriting it —
+  book_chapter_update already saves the previous version
+- Offer book_chapter_revert instead of rewriting from memory when the author
+  dislikes a revision; the earlier text is still on disk
