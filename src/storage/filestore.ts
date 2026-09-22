@@ -11,6 +11,7 @@ import {
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
+import { withFileLock } from "./lock";
 
 const MCP_DIR = ".book-mcp";
 const CHAPTERS_DIR = "chapters";
@@ -199,6 +200,174 @@ export function getAuthorProfile(): AuthorProfile | null {
 
 export function saveAuthorProfile(profile: AuthorProfile): void {
   writeJSON(mcpPath("author-profile.json"), profile);
+}
+
+// Read-modify-write transactions
+//
+// Each helper below hands a document to `mutate`, then writes it back, with
+// the file locked for the whole span. That span is the part that matters: the
+// read and the write are individually atomic already, but a handler that
+// yields between them lets a second call start from the same state and lose
+// one of the two changes. Anything that changes one of these files should go
+// through the matching helper rather than calling get*/save* in sequence.
+//
+// `mutate` may be async. Returning `false` from it abandons the transaction
+// without writing, which is how a no-op update avoids touching the file.
+//
+// Nesting is allowed in one direction only: registry -> outline, which is what
+// a chapter rename needs. Taking them the other way round would deadlock, so
+// no outline helper may reach for the registry.
+
+const ABORT = false;
+
+async function transact<T>(
+  filePath: string,
+  load: () => T | null,
+  save: (value: T) => void,
+  missingMessage: string,
+  mutate: (value: T) => unknown | Promise<unknown>
+): Promise<T> {
+  return withFileLock(filePath, async () => {
+    const value = load();
+    if (!value) throw new BookMCPError(missingMessage);
+    const outcome = await mutate(value);
+    if (outcome !== ABORT) save(value);
+    return value;
+  });
+}
+
+export function updateRegistry(
+  mutate: (registry: Registry) => unknown | Promise<unknown>
+): Promise<Registry> {
+  return transact(
+    mcpPath("registry.json"),
+    getRegistry,
+    saveRegistry,
+    "No book project found. Run book_init first.",
+    mutate
+  );
+}
+
+export function updateStoryBible(
+  mutate: (bible: StoryBible) => unknown | Promise<unknown>
+): Promise<StoryBible> {
+  return transact(
+    mcpPath("story-bible.json"),
+    getStoryBible,
+    saveStoryBible,
+    "No story bible found. Run book_init first.",
+    mutate
+  );
+}
+
+export function updateStyleGuide(
+  mutate: (guide: StyleGuide) => unknown | Promise<unknown>
+): Promise<StyleGuide> {
+  return transact(
+    mcpPath("style-guide.json"),
+    getStyleGuide,
+    saveStyleGuide,
+    "No style guide found. Use book_style_set to create one.",
+    mutate
+  );
+}
+
+export function updateOutline(
+  mutate: (outline: Outline) => unknown | Promise<unknown>
+): Promise<Outline> {
+  return transact(
+    mcpPath("outline.json"),
+    getOutline,
+    saveOutline,
+    "No outline found. Run book_init first.",
+    mutate
+  );
+}
+
+/**
+ * Amends the outline only when the project has one, reporting whether it
+ * wrote. A chapter rename needs this: an outline is optional, and a rename
+ * that matches nothing in it should not rewrite the file.
+ *
+ * Returning `false` from `mutate` abandons the write.
+ */
+export function updateOutlineIfPresent(
+  mutate: (outline: Outline) => unknown | Promise<unknown>
+): Promise<boolean> {
+  return withFileLock(mcpPath("outline.json"), async () => {
+    const outline = getOutline();
+    if (!outline) return false;
+    const outcome = await mutate(outline);
+    if (outcome === ABORT) return false;
+    saveOutline(outline);
+    return true;
+  });
+}
+
+export function updateCoverSpec(
+  mutate: (spec: CoverSpec) => unknown | Promise<unknown>
+): Promise<CoverSpec> {
+  return transact(
+    mcpPath("cover-spec.json"),
+    getCoverSpec,
+    saveCoverSpec,
+    "No cover spec found. Run book_cover_create_spec first.",
+    mutate
+  );
+}
+
+export function updateAuthorProfile(
+  mutate: (profile: AuthorProfile) => unknown | Promise<unknown>
+): Promise<AuthorProfile> {
+  return transact(
+    mcpPath("author-profile.json"),
+    getAuthorProfile,
+    saveAuthorProfile,
+    "No author profile found. Run book_author_from_linkedin or book_author_update_profile first.",
+    mutate
+  );
+}
+
+/**
+ * Replaces a whole document under its lock, for the tools that write a file
+ * outright instead of amending it (book_style_set, book_outline_set, a first
+ * cover spec or author profile).
+ */
+export function writeStyleGuide(guide: StyleGuide): Promise<void> {
+  return withFileLock(mcpPath("style-guide.json"), () => saveStyleGuide(guide));
+}
+
+export function writeOutline(outline: Outline): Promise<void> {
+  return withFileLock(mcpPath("outline.json"), () => saveOutline(outline));
+}
+
+export function writeCoverSpec(spec: CoverSpec): Promise<void> {
+  return withFileLock(mcpPath("cover-spec.json"), () => saveCoverSpec(spec));
+}
+
+export function writeAuthorProfile(profile: AuthorProfile): Promise<void> {
+  return withFileLock(mcpPath("author-profile.json"), () => saveAuthorProfile(profile));
+}
+
+/**
+ * Amends the author profile, creating it first when the project has none.
+ * book_author_update_profile needs this because it doubles as the tool that
+ * establishes the profile, which updateAuthorProfile cannot do.
+ */
+export function upsertAuthorProfile(
+  create: () => AuthorProfile,
+  mutate: (profile: AuthorProfile) => unknown | Promise<unknown>
+): Promise<AuthorProfile> {
+  return withFileLock(mcpPath("author-profile.json"), async () => {
+    const profile = getAuthorProfile() ?? create();
+    await mutate(profile);
+    saveAuthorProfile(profile);
+    return profile;
+  });
+}
+
+export function writeStoryBible(bible: StoryBible): Promise<void> {
+  return withFileLock(mcpPath("story-bible.json"), () => saveStoryBible(bible));
 }
 
 export function getProjectPaths() {

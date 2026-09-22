@@ -2,7 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as fs from "fs";
 import * as path from "path";
-import { getCoverSpec, saveCoverSpec, getRegistry } from "../storage/filestore";
+import { getCoverSpec, writeCoverSpec, getRegistry } from "../storage/filestore";
 import { BookMCPError } from "../utils/errors";
 
 // Kindle Direct Publishing (KDP) cover specifications
@@ -247,7 +247,7 @@ export function registerCoverTools(server: McpServer): void {
           : undefined,
       };
 
-      saveCoverSpec(spec);
+      await writeCoverSpec(spec);
 
       // Generate an AI image generation prompt
       const aiPrompt = generateCoverPrompt(spec, registry.genre);

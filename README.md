@@ -338,6 +338,41 @@ book_chapter_revert chapterId="ch-003" timestamp="2026-09-22T14-30-00-000Z"
 Versions are stored per chapter **id**, not per file name, so renaming a chapter
 keeps its history with it.
 
+## Concurrent Tool Calls
+
+Every JSON document under `.book-mcp/` is read-modify-written: a tool reads the
+whole file, changes a field, and writes it back. The write itself is atomic — a
+temp file and a rename, so a reader never sees half a document — but that says
+nothing about two tool calls overlapping. If a handler yields between its read
+and its write, a second call can start from the same state and one of the two
+changes is lost.
+
+Each of those files therefore has an in-process queue keyed by its path
+(`src/storage/lock.ts`). Work on one file runs in the order it was requested;
+different files never wait on each other. What is held is the *whole*
+read-modify-write span, not the read and the write separately — locking those
+individually would add nothing, since each is already atomic on its own.
+
+Tools reach it through the transaction helpers in `src/storage/filestore.ts`
+(`updateRegistry`, `updateStoryBible`, `updateStyleGuide`, `updateOutline`,
+`updateCoverSpec`, `updateAuthorProfile`). Anything that changes one of these
+files should go through the matching helper rather than calling `get*` and
+`save*` in sequence. Read-only tools need no lock.
+
+A chapter rename is the one nested case: it holds `registry.json` and takes
+`outline.json` inside it. That order — registry, then outline — is the only one
+used anywhere, so the two cannot deadlock against each other.
+
+Two caveats worth knowing:
+
+- **This is an in-process queue, not a file lock.** One container serving one
+  project is what this server is built for. Two processes pointed at the same
+  project directory would still race.
+- **`oauth.json` is handled differently.** `OAuthStore` keeps the whole store in
+  memory and every mutator is synchronous, so a read and its write happen in one
+  tick and nothing can interleave. It needs no lock, and making its methods
+  async to take one would change the provider interface for no gain.
+
 ## Project Structure
 
 When you initialize a book, the MCP creates this structure in your project directory:

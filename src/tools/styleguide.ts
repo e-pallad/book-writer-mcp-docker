@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { getStyleGuide, saveStyleGuide } from "../storage/filestore";
+import {
+  getStyleGuide,
+  updateStyleGuide,
+  writeStyleGuide,
+} from "../storage/filestore";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare, wholeWordRegExp } from "../utils/text";
 
@@ -20,7 +24,7 @@ export function registerStyleGuideTools(server: McpServer): void {
       samplePassage: z.string().describe("Sample passage for tone matching"),
     },
     async (input) => {
-      saveStyleGuide(input);
+      await writeStyleGuide(input);
       return {
         content: [
           {
@@ -165,18 +169,17 @@ export function registerStyleGuideTools(server: McpServer): void {
       notes: z.string().optional().default("").describe("Additional notes on how this influence should manifest"),
     },
     async (input) => {
-      const guide = getStyleGuide();
-      if (!guide)
-        throw new BookMCPError("No style guide found. Use book_style_set first.");
-
-      if (!guide.influences) guide.influences = [];
-      guide.influences.push({
-        author: input.author,
-        works: input.works,
-        elementsToEmulate: input.elementsToEmulate,
-        notes: input.notes,
+      let totalInfluences = 0;
+      await updateStyleGuide((guide) => {
+        if (!guide.influences) guide.influences = [];
+        guide.influences.push({
+          author: input.author,
+          works: input.works,
+          elementsToEmulate: input.elementsToEmulate,
+          notes: input.notes,
+        });
+        totalInfluences = guide.influences.length;
       });
-      saveStyleGuide(guide);
 
       return {
         content: [
@@ -186,7 +189,7 @@ export function registerStyleGuideTools(server: McpServer): void {
               {
                 message: `Author influence "${input.author}" added to style guide.`,
                 influence: input,
-                totalInfluences: guide.influences.length,
+                totalInfluences,
               },
               null,
               2
@@ -230,17 +233,17 @@ export function registerStyleGuideTools(server: McpServer): void {
       author: z.string().describe("Author name to remove"),
     },
     async ({ author }) => {
-      const guide = getStyleGuide();
-      if (!guide)
-        throw new BookMCPError("No style guide found. Use book_style_set first.");
-
-      if (!guide.influences) guide.influences = [];
-      const before = guide.influences.length;
-      guide.influences = guide.influences.filter(
-        (i) => normalizeForCompare(i.author) !== normalizeForCompare(author)
-      );
-      const removed = before - guide.influences.length;
-      saveStyleGuide(guide);
+      let removed = 0;
+      let remaining = 0;
+      await updateStyleGuide((guide) => {
+        if (!guide.influences) guide.influences = [];
+        const before = guide.influences.length;
+        guide.influences = guide.influences.filter(
+          (i) => normalizeForCompare(i.author) !== normalizeForCompare(author)
+        );
+        removed = before - guide.influences.length;
+        remaining = guide.influences.length;
+      });
 
       return {
         content: [
@@ -252,7 +255,7 @@ export function registerStyleGuideTools(server: McpServer): void {
                   ? `Removed influence "${author}".`
                   : `Author "${author}" not found in influences.`,
                 removed,
-                remaining: guide.influences.length,
+                remaining,
               },
               null,
               2

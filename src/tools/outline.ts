@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { getOutline, saveOutline } from "../storage/filestore";
+import {
+  getOutline,
+  updateOutline,
+  writeOutline,
+} from "../storage/filestore";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare } from "../utils/text";
 
@@ -25,7 +29,7 @@ export function registerOutlineTools(server: McpServer): void {
         .describe("Hierarchical outline with acts and chapters"),
     },
     async ({ outline }) => {
-      saveOutline({ acts: outline });
+      await writeOutline({ acts: outline });
       return {
         content: [
           {
@@ -77,29 +81,25 @@ export function registerOutlineTools(server: McpServer): void {
       scenes: z.array(z.string()).optional().describe("New scene list"),
     },
     async ({ chapterTitle, synopsis, scenes }) => {
-      const outline = getOutline();
-      if (!outline)
-        throw new BookMCPError("No outline found. Run book_init first.");
-
-      let found = false;
-      for (const act of outline.acts) {
-        for (const ch of act.chapters) {
-          if (normalizeForCompare(ch.title) === normalizeForCompare(chapterTitle)) {
-            if (synopsis !== undefined) ch.synopsis = synopsis;
-            if (scenes !== undefined) ch.scenes = scenes;
-            found = true;
-            break;
+      await updateOutline((outline) => {
+        let found = false;
+        for (const act of outline.acts) {
+          for (const ch of act.chapters) {
+            if (normalizeForCompare(ch.title) === normalizeForCompare(chapterTitle)) {
+              if (synopsis !== undefined) ch.synopsis = synopsis;
+              if (scenes !== undefined) ch.scenes = scenes;
+              found = true;
+              break;
+            }
           }
+          if (found) break;
         }
-        if (found) break;
-      }
 
-      if (!found)
-        throw new BookMCPError(
-          `Chapter "${chapterTitle}" not found in outline.`
-        );
-
-      saveOutline(outline);
+        if (!found)
+          throw new BookMCPError(
+            `Chapter "${chapterTitle}" not found in outline.`
+          );
+      });
       return {
         content: [
           {

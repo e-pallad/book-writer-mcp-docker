@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   readChapterFile,
   writeChapterFile,
-  saveRegistry,
+  updateRegistry,
 } from "../storage/filestore";
 import {
   MAX_SNAPSHOTS_PER_CHAPTER,
@@ -91,20 +91,25 @@ export function registerHistoryTools(server: McpServer): void {
         ),
     },
     async ({ chapterId, timestamp }) => {
-      const registry = requireProject();
-      const chapter = resolveChapter(registry, chapterId);
+      let chapter!: ReturnType<typeof resolveChapter>;
+      let undoTimestamp!: string;
+      let restored!: string;
+      let current!: string;
 
-      const restored = readSnapshot(chapter.id, timestamp);
-      const current = readChapterFile(chapter.filename);
+      await updateRegistry((registry) => {
+        chapter = resolveChapter(registry, chapterId);
 
-      // Unconditionally, even when the texts match: an author who asks for a
-      // revert should find an undo point waiting afterwards either way.
-      const undoTimestamp = saveSnapshot(chapter.id, current);
+        restored = readSnapshot(chapter.id, timestamp);
+        current = readChapterFile(chapter.filename);
 
-      writeChapterFile(chapter.filename, restored);
-      chapter.wordCount = countWords(restored);
-      chapter.updatedAt = new Date().toISOString();
-      saveRegistry(registry);
+        // Unconditionally, even when the texts match: an author who asks for a
+        // revert should find an undo point waiting afterwards either way.
+        undoTimestamp = saveSnapshot(chapter.id, current);
+
+        writeChapterFile(chapter.filename, restored);
+        chapter.wordCount = countWords(restored);
+        chapter.updatedAt = new Date().toISOString();
+      });
 
       const { added, removed } = diffStats(current, restored);
 

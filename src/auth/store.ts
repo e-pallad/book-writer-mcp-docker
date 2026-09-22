@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { getProjectPaths } from "../storage/filestore";
 
@@ -52,6 +52,12 @@ export function secretsMatch(provided: string, expected: string): boolean {
  * OAuth state persisted next to the book data, so a container restart does not
  * disconnect an already-authorized connector. Codes and tokens are keyed by
  * their SHA-256 digest, so the file never holds a usable credential.
+ *
+ * Unlike the project's JSON documents this class needs no async lock. It holds
+ * the whole store in memory and every mutator is synchronous — read, change,
+ * write all happen in one tick, so no second call can interleave. Making these
+ * methods async to take a lock would change the OAuthServerProvider surface
+ * for no gain.
  */
 export class OAuthStore {
   private data: StoreShape = emptyStore();
@@ -82,7 +88,10 @@ export class OAuthStore {
       fs.mkdirSync(dir, { recursive: true });
     }
     // Written via a temp file so a crash mid-write cannot truncate the store.
-    const tmp = `${this.filePath}.tmp`;
+    // The name is unique per write: a fixed ".tmp" would be shared by two
+    // processes pointed at one project directory, and the loser of that race
+    // would rename a file the winner was still writing.
+    const tmp = `${this.filePath}.${randomUUID()}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2), {
       encoding: "utf-8",
       mode: 0o600,
