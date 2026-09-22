@@ -128,7 +128,30 @@ There are no user accounts. Claude registers itself as a client, then sends you 
 
 To connect: **Settings → Connectors → Add custom connector**, enter `https://your-domain/mcp`, leave the OAuth client fields empty (Claude registers itself), then complete the passphrase prompt Claude opens.
 
-> Several users have reported that claude.ai completes the OAuth flow but then does not attach the access token to `/mcp` requests ([#79](https://github.com/anthropics/claude-ai-mcp/issues/79), [#155](https://github.com/anthropics/claude-ai-mcp/issues/155), [#162](https://github.com/anthropics/claude-ai-mcp/issues/162)). If the connector authorizes but every call comes back `401`, check those issues before debugging your own setup.
+#### Browser clients and CORS
+
+claude.ai's web client calls `/mcp` with `fetch()` from `https://claude.ai`, which makes every call cross-origin. The browser therefore sends a `OPTIONS` preflight before the real request, and **a preflight never carries an `Authorization` header** — the browser generates it, not the client code. A server that authenticates `OPTIONS` answers `401`, the browser aborts, and the authenticated request is never sent.
+
+That is exactly the failure reported in [#79](https://github.com/anthropics/claude-ai-mcp/issues/79), [#155](https://github.com/anthropics/claude-ai-mcp/issues/155) and [#162](https://github.com/anthropics/claude-ai-mcp/issues/162): the connector authorizes, and then every call fails with no token in the server log. The tokenless request in the log is the preflight. This server used to have that bug; it does not any more. The full investigation, with redacted request/response pairs, is in [ISSUES.md](ISSUES.md).
+
+The server now answers preflights before authentication runs, and exposes the headers a browser client has to read back:
+
+- `Mcp-Session-Id` — Streamable HTTP requires the client to echo the session id on every request after `initialize`. Without `Access-Control-Expose-Headers` the browser hides it and the session is unusable.
+- `WWW-Authenticate` — carries the `resource_metadata` pointer that starts OAuth discovery, so it has to be readable off a `401`.
+
+Any origin is allowed by default. That is safe because `/mcp` still requires a bearer token on every request, so another site can reach the endpoint but cannot authenticate to it. To restrict it anyway:
+
+```
+MCP_ALLOWED_ORIGINS=https://claude.ai     # comma-separated; unset means any origin
+```
+
+#### Debugging a connector that will not authenticate
+
+```
+MCP_DEBUG_AUTH=1
+```
+
+Logs one line per request, before authentication runs, so rejected requests show up too. Credentials are never logged — the token is reduced to its length and an 8-character SHA-256 prefix, so the output is safe to paste into a bug report. [ISSUES.md](ISSUES.md) explains how to read it.
 
 ### Making it reachable
 
