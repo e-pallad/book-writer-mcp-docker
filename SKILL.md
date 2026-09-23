@@ -17,10 +17,13 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 1. `book_style_get` — always load style guide before drafting
 2. `book_character_list` — recall who exists
 3. `book_plot_threads_list` — check open threads to weave in
-4. Draft the chapter content
-5. `book_chapter_create` or `book_chapter_update` — save it
-6. `book_continuity_check` — run before marking as review/final
-7. `book_style_check` — verify voice consistency
+4. `book_timeline_list` — check when this chapter sits relative to what is
+   already logged, so the draft does not contradict it
+5. Draft the chapter content
+6. `book_chapter_create` or `book_chapter_update` — save it
+7. `book_timeline_add` — log what happened and when, while it is fresh
+8. `book_continuity_check` — run before marking as review/final
+9. `book_style_check` — verify voice consistency
 
 ## Workflow for Revising the Chapter List
 - `book_chapter_rename` — change a chapter title; it also renames the file, the
@@ -51,6 +54,11 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 - NEVER invent character details — always check story bible first
 - Run continuity check before marking any chapter "final"
 - Keep synopsis fields updated as chapters evolve
+- Log dated events with book_timeline_add rather than burying them in a
+  character's notes — book_continuity_check can only cross-reference what is on
+  the timeline
+- Give a timeline event a sortKey whenever the story implies an order; without
+  one the event cannot be placed and sorts last
 - Retitle chapters with book_chapter_rename, never by re-creating them — a new
   chapter gets a new id and orphans the story bible references
 - After book_chapter_delete, fix the dangling references it reports

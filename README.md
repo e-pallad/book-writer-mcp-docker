@@ -210,6 +210,15 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_plot_threads_list` | List plot threads by status |
 | `book_continuity_check` | Cross-reference a chapter against the story bible |
 
+### Timeline
+
+| Tool | What it does |
+|------|-------------|
+| `book_timeline_add` | Log an event with its in-story time and an optional sort key |
+| `book_timeline_list` | List events in story order, optionally filtered by chapter or character |
+| `book_timeline_update` | Correct an event |
+| `book_timeline_delete` | Remove an event |
+
 ### Outline
 
 | Tool | What it does |
@@ -294,6 +303,49 @@ history of the one it replaced.
 
 Both tools (and every other chapter tool) accept either a chapter id or the
 current chapter title.
+
+## The Timeline
+
+The story bible tracks who and where; the timeline tracks *when*. Events live in
+`.book-mcp/timeline.json`, which `story-bible.json` points at via `timelineRef`
+rather than holding a second copy — an event references chapters and characters
+by id, so renaming a character updates every event that mentions them.
+
+Each event carries two kinds of time:
+
+- **`inStoryTime`** is free text, how the story itself would put it:
+  `"Saturday night, ~23:30"`, `"three winters before the siege"`, `"the morning
+  after the fire"`. A story's own clock rarely maps onto a calendar, so nothing
+  tries to parse this.
+- **`sortKey`** is optional and only has to sort lexicographically. An ISO-ish
+  stamp works (`"1997-06-14T23:30"`), and so does a scheme of your own
+  (`"Y02-D14-2330"`) for a story with no calendar. Events without one are listed
+  after those that have one, ordered by the chapter they belong to.
+
+```
+book_timeline_add event="Mara finds the letter" \
+                  inStoryTime="Saturday night, ~23:30" \
+                  sortKey="1997-06-14T23:30" \
+                  chapterId="ch-003" \
+                  characterIds=["Mara", "Kell"]
+```
+
+Chapters and characters can be named rather than id'd — `chapterId="The Letter"`
+and `characterIds=["Mara"]` both resolve. An unknown name is rejected rather
+than stored, so a typo does not become a silent dangling reference.
+
+### What the continuity check does with it
+
+`book_continuity_check` cross-references the chapter against the timeline and
+flags three things. All of them stay quiet unless the timeline actually has
+something to say — a chapter with no logged events is never second-guessed.
+
+| Flag | Severity | When |
+|------|----------|------|
+| Chronology vs chapter order | error | An event logged in this chapter happens *before* one logged in an earlier chapter. Either the chapter is a flashback or a `sortKey` is wrong. |
+| Weekday contradiction | error | The chapter names a weekday the logged event does not. |
+| Time-of-day contradiction | warning | The chapter reads as morning where the event says night. Only raised when the draft names exactly one time of day — a chapter that spans dawn to dusk legitimately mentions several. |
+| Absent character | warning | The timeline puts a character in this chapter but the prose never names them. |
 
 ## Chapter Version History
 
@@ -381,7 +433,8 @@ When you initialize a book, the MCP creates this structure in your project direc
 your-book/
   .book-mcp/
     registry.json       # Book metadata, chapter list, word counts
-    story-bible.json    # Characters, settings, plot threads, timeline
+    story-bible.json    # Characters, settings, plot threads
+    timeline.json       # Story events in chronological order
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification

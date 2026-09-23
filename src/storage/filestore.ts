@@ -8,6 +8,7 @@ import {
   Outline,
   CoverSpec,
   AuthorProfile,
+  Timeline,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
@@ -97,9 +98,11 @@ export function initProject(
     settings: [],
     themes: [],
     plotThreads: [],
-    timeline: [],
+    timelineRef: TIMELINE_FILE,
   };
   saveStoryBible(bible);
+
+  saveTimeline({ events: [] });
 
   const outline: Outline = { acts: [] };
   saveOutline(outline);
@@ -164,6 +167,78 @@ export function getStoryBible(): StoryBible | null {
 
 export function saveStoryBible(bible: StoryBible): void {
   writeJSON(mcpPath("story-bible.json"), bible);
+}
+
+// Timeline
+//
+// Kept out of story-bible.json so events can reference chapters and characters
+// by id without a second copy of either. story-bible.json carries a
+// `timelineRef` pointing here.
+export const TIMELINE_FILE = "timeline.json";
+
+export function getTimeline(): Timeline | null {
+  return readJSON<Timeline>(mcpPath(TIMELINE_FILE));
+}
+
+export function saveTimeline(timeline: Timeline): void {
+  writeJSON(mcpPath(TIMELINE_FILE), timeline);
+}
+
+/**
+ * The timeline, creating it on first use and carrying over any events an older
+ * version of this server wrote inline into story-bible.json.
+ *
+ * Projects created before timeline.json existed have `timeline: []` in their
+ * story bible. Nothing ever wrote to it — there was no tool that could — but a
+ * hand-edited project might, so the events are moved rather than dropped.
+ */
+export function loadOrInitTimeline(): Timeline {
+  const existing = getTimeline();
+  if (existing) return existing;
+
+  const timeline: Timeline = { events: [] };
+  const bible = getStoryBible();
+
+  if (bible?.timeline?.length) {
+    const now = new Date().toISOString();
+    timeline.events = bible.timeline.map((legacy, index) => ({
+      id: legacy.id || `tl-legacy-${index + 1}`,
+      event: legacy.event,
+      inStoryTime: "",
+      // The old shape had an integer `order` and nothing else to sort on.
+      sortKey: String(legacy.order ?? index).padStart(6, "0"),
+      chapterId: legacy.chapterId || undefined,
+      characterIds: [],
+      notes: "Migrated from story-bible.json.",
+      createdAt: now,
+      updatedAt: now,
+    }));
+  }
+
+  saveTimeline(timeline);
+
+  if (bible) {
+    bible.timelineRef = TIMELINE_FILE;
+    delete bible.timeline;
+    saveStoryBible(bible);
+  }
+
+  return timeline;
+}
+
+/**
+ * Amends the timeline under its own lock, creating and migrating it first when
+ * the project has none.
+ */
+export function updateTimeline(
+  mutate: (timeline: Timeline) => unknown | Promise<unknown>
+): Promise<Timeline> {
+  return withFileLock(mcpPath(TIMELINE_FILE), async () => {
+    const timeline = loadOrInitTimeline();
+    const outcome = await mutate(timeline);
+    if (outcome !== ABORT) saveTimeline(timeline);
+    return timeline;
+  });
 }
 
 // Style Guide
@@ -382,5 +457,6 @@ export function getProjectPaths() {
     outlinePath: mcpPath("outline.json"),
     coverSpecPath: mcpPath("cover-spec.json"),
     authorProfilePath: mcpPath("author-profile.json"),
+    timelinePath: mcpPath(TIMELINE_FILE),
   };
 }

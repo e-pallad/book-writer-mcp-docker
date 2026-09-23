@@ -2,6 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getRegistry,
+  getTimeline,
   updateRegistry,
   updateOutlineIfPresent,
   getStoryBible,
@@ -143,9 +144,17 @@ function findReferences(chapter: ChapterMeta): string[] {
         );
       }
     }
-    for (const event of bible.timeline) {
+  }
+
+  // The timeline moved out of the story bible into timeline.json, but a
+  // deleted chapter still leaves its events pointing at nothing.
+  const timeline = getTimeline();
+  if (timeline) {
+    for (const event of timeline.events) {
       if (event.chapterId === chapter.id) {
-        references.push(`Timeline event "${event.event}" is set in "${chapter.id}".`);
+        references.push(
+          `Timeline event "${event.event}" (${event.id}) is set in "${chapter.id}".`
+        );
       }
     }
   }
