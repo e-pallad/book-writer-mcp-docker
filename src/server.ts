@@ -8,6 +8,8 @@ import { registerExportTools } from "./tools/export";
 import { registerCoverTools } from "./tools/cover";
 import { registerAuthorTools } from "./tools/author";
 import { registerPreviewTools } from "./tools/preview";
+import { registerHistoryTools } from "./tools/history";
+import { registerTimelineTools } from "./tools/timeline";
 
 // Builds a fully configured server instance. Shared by every transport so the
 // stdio and HTTP entry points always expose the same tools.
@@ -19,7 +21,9 @@ export function createServer(): McpServer {
 
   // Register all tool modules
   registerManuscriptTools(server);
+  registerHistoryTools(server);
   registerStoryBibleTools(server);
+  registerTimelineTools(server);
   registerOutlineTools(server);
   registerStyleGuideTools(server);
   registerContinuityTools(server);

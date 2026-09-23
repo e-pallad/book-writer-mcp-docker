@@ -11,6 +11,8 @@ import { createServer } from "./server";
 import { getProjectPaths } from "./storage/filestore";
 import { OAuthStore } from "./auth/store";
 import { BookOAuthProvider, CONSENT_PATH } from "./auth/provider";
+import { createCorsMiddleware, parseAllowedOrigins } from "./http/cors";
+import { createAuthDebugMiddleware } from "./http/debug";
 
 const MCP_PATH = "/mcp";
 const HEALTH_PATH = "/health";
@@ -22,6 +24,8 @@ const host = process.env.HOST || "0.0.0.0";
 const authToken = process.env.MCP_AUTH_TOKEN;
 const publicUrl = process.env.MCP_PUBLIC_URL;
 const oauthPassphrase = process.env.MCP_OAUTH_PASSPHRASE || authToken;
+const allowedOrigins = parseAllowedOrigins(process.env.MCP_ALLOWED_ORIGINS);
+const authDebug = process.env.MCP_DEBUG_AUTH === "1";
 
 // One transport per MCP session, keyed by the session id issued on initialize.
 const transports: Record<string, StreamableHTTPServerTransport> = {};
@@ -147,6 +151,16 @@ function main() {
   // express-rate-limit can read X-Forwarded-For without throwing.
   app.set("trust proxy", 1);
 
+  // Before every route, including the OAuth endpoints and the auth middleware:
+  // a CORS preflight has to be answered without a token, or a browser client
+  // never gets as far as sending the authenticated request. See src/http/cors.ts.
+  // Debug logging goes first so it also sees the preflights, which the CORS
+  // middleware answers and does not pass on.
+  if (authDebug) {
+    app.use(createAuthDebugMiddleware());
+  }
+  app.use(createCorsMiddleware(allowedOrigins));
+
   const oauthEnabled = Boolean(publicUrl);
   let mcpAuth: (req: Request, res: Response, next: NextFunction) => void = (
     _req,
@@ -260,6 +274,16 @@ function main() {
     } else {
       console.error(
         "OAuth disabled (MCP_PUBLIC_URL not set); static bearer token only."
+      );
+    }
+    console.error(
+      allowedOrigins
+        ? `CORS restricted to: ${allowedOrigins.join(", ")}`
+        : "CORS open to any origin (every /mcp request still needs a bearer token)."
+    );
+    if (authDebug) {
+      console.error(
+        "MCP_DEBUG_AUTH=1: logging redacted auth headers for every request."
       );
     }
   });

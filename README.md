@@ -128,7 +128,30 @@ There are no user accounts. Claude registers itself as a client, then sends you 
 
 To connect: **Settings → Connectors → Add custom connector**, enter `https://your-domain/mcp`, leave the OAuth client fields empty (Claude registers itself), then complete the passphrase prompt Claude opens.
 
-> Several users have reported that claude.ai completes the OAuth flow but then does not attach the access token to `/mcp` requests ([#79](https://github.com/anthropics/claude-ai-mcp/issues/79), [#155](https://github.com/anthropics/claude-ai-mcp/issues/155), [#162](https://github.com/anthropics/claude-ai-mcp/issues/162)). If the connector authorizes but every call comes back `401`, check those issues before debugging your own setup.
+#### Browser clients and CORS
+
+claude.ai's web client calls `/mcp` with `fetch()` from `https://claude.ai`, which makes every call cross-origin. The browser therefore sends a `OPTIONS` preflight before the real request, and **a preflight never carries an `Authorization` header** — the browser generates it, not the client code. A server that authenticates `OPTIONS` answers `401`, the browser aborts, and the authenticated request is never sent.
+
+That is exactly the failure reported in [#79](https://github.com/anthropics/claude-ai-mcp/issues/79), [#155](https://github.com/anthropics/claude-ai-mcp/issues/155) and [#162](https://github.com/anthropics/claude-ai-mcp/issues/162): the connector authorizes, and then every call fails with no token in the server log. The tokenless request in the log is the preflight. This server used to have that bug; it does not any more. The full investigation, with redacted request/response pairs, is in [ISSUES.md](ISSUES.md).
+
+The server now answers preflights before authentication runs, and exposes the headers a browser client has to read back:
+
+- `Mcp-Session-Id` — Streamable HTTP requires the client to echo the session id on every request after `initialize`. Without `Access-Control-Expose-Headers` the browser hides it and the session is unusable.
+- `WWW-Authenticate` — carries the `resource_metadata` pointer that starts OAuth discovery, so it has to be readable off a `401`.
+
+Any origin is allowed by default. That is safe because `/mcp` still requires a bearer token on every request, so another site can reach the endpoint but cannot authenticate to it. To restrict it anyway:
+
+```
+MCP_ALLOWED_ORIGINS=https://claude.ai     # comma-separated; unset means any origin
+```
+
+#### Debugging a connector that will not authenticate
+
+```
+MCP_DEBUG_AUTH=1
+```
+
+Logs one line per request, before authentication runs, so rejected requests show up too. Credentials are never logged — the token is reduced to its length and an 8-character SHA-256 prefix, so the output is safe to paste into a bug report. [ISSUES.md](ISSUES.md) explains how to read it.
 
 ### Making it reachable
 
@@ -167,6 +190,9 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_chapter_delete` | Delete a chapter (file moves to `.book-mcp/trash/`) |
 | `book_chapter_list` | List all chapters with status and word counts |
 | `book_chapter_reorder` | Change chapter order |
+| `book_chapter_history_list` | List a chapter's saved versions with a per-version diff summary |
+| `book_chapter_revert` | Restore a saved version (the text it replaces is saved first) |
+| `book_chapter_diff` | Unified diff between a saved version and the current text |
 | `book_stats` | Manuscript-wide statistics |
 
 ### Story Bible (world-building & continuity)
@@ -185,6 +211,15 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_plot_threads_list` | List plot threads by status |
 | `book_continuity_check` | Cross-reference a chapter against the story bible |
 
+### Timeline
+
+| Tool | What it does |
+|------|-------------|
+| `book_timeline_add` | Log an event with its in-story time and an optional sort key |
+| `book_timeline_list` | List events in story order, optionally filtered by chapter or character |
+| `book_timeline_update` | Correct an event |
+| `book_timeline_delete` | Remove an event |
+
 ### Outline
 
 | Tool | What it does |
@@ -199,7 +234,7 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 |------|-------------|
 | `book_style_set` | Set the full style guide (voice, POV, tense, tone) |
 | `book_style_get` | Retrieve the style guide |
-| `book_style_check` | Check a passage against the style guide |
+| `book_style_check` | Check a passage against the style guide, and optionally one character's dialogue against their voice profile |
 | `book_style_add_influence` | Add an author influence |
 | `book_style_list_influences` | List author influences |
 | `book_style_remove_influence` | Remove an author influence |
@@ -257,11 +292,219 @@ apart from the chapter itself.
 `confirm: true`, moves the markdown file to `.book-mcp/trash/` instead of
 deleting it outright, closes the gap in the chapter order, and reports anything
 in the story bible, timeline or outline that still points at the deleted
-chapter. Chapter ids are never reused, so surviving references keep pointing at
-the chapter they were written for.
+chapter.
+
+Deleting a chapter from the middle leaves its id retired: the ids around it do
+not shift, so references written against them keep pointing at the chapter they
+were written for. Deleting the **last** chapter is the exception — the next id
+is derived from the highest one still registered, so the id it gave up is handed
+to the next chapter created. That is why a delete also moves the chapter's saved
+versions to `.book-mcp/trash/`: a new chapter must never inherit the revision
+history of the one it replaced.
 
 Both tools (and every other chapter tool) accept either a chapter id or the
 current chapter title.
+
+## Per-Character Voice
+
+The style guide is the book's voice — one POV, one tense, one set of habits for
+the whole manuscript. A `voice_profile` is one *person's* voice inside it, and
+it is optional: most characters never need one, and a character without one is
+checked exactly as before.
+
+```
+book_character_add name="Kell" role="supporting" description="Dockhand." \
+  voiceProfile='{
+    "vocabulary": "nautical, plain, no abstractions",
+    "sentenceLength": "clipped",
+    "verbalTics": ["aye", "mate"],
+    "neverSays": ["furthermore", "consequently"],
+    "notes": "Never explains himself."
+  }'
+```
+
+`neverSays` and `verbalTics` are matched **literally** against dialogue, so they
+want words and phrases rather than descriptions of a habit: `"furthermore"`
+works, `"avoids formal connectives"` does not.
+
+Pass a character to `book_style_check` and the passage is judged twice — against
+the global style guide as prose, and against that character's profile as speech:
+
+```
+book_style_check passage="..." characterId="Kell"
+```
+
+| Flag | When |
+|------|------|
+| Would never say | A line contains one of the character's `neverSays` terms. |
+| Sentence length | A line runs well outside the band for their `sentenceLength`. The bands overlap deliberately — dialogue is uneven, and one short retort from a rambling character means nothing. |
+| Missing verbal tics | The character has tics and none appears across three or more of their lines. A single line is not evidence. |
+| Sounds like someone else | The line fits another character's profile *better*, and carries one of that character's markers. Merely not breaking someone else's rules is not enough. |
+
+### How speakers are worked out
+
+Prose is not parseable, so attribution is deliberately conservative. A line
+tagged `"..." Kell said` or `"..." said Kell` goes to Kell; the tag is read only
+up to the neighbouring quotation mark, so an untagged line cannot borrow the
+next line's tag. A line with **no** tag is treated as the character's own, on
+the grounds that you named them when you asked. Another character's tagged
+dialogue in the same passage is never charged against them.
+
+Straight quotes, curly quotes, guillemets and low-9 quotes are all recognised.
+The response reports `linesAttributedToCharacter` and `linesAttributedToOthers`
+so you can see how the passage was split before trusting the flags.
+
+## The Timeline
+
+The story bible tracks who and where; the timeline tracks *when*. Events live in
+`.book-mcp/timeline.json`, which `story-bible.json` points at via `timelineRef`
+rather than holding a second copy — an event references chapters and characters
+by id, so renaming a character updates every event that mentions them.
+
+Each event carries two kinds of time:
+
+- **`inStoryTime`** is free text, how the story itself would put it:
+  `"Saturday night, ~23:30"`, `"three winters before the siege"`, `"the morning
+  after the fire"`. A story's own clock rarely maps onto a calendar, so nothing
+  tries to parse this.
+- **`sortKey`** is optional and only has to sort lexicographically. An ISO-ish
+  stamp works (`"1997-06-14T23:30"`), and so does a scheme of your own
+  (`"Y02-D14-2330"`) for a story with no calendar. Events without one are listed
+  after those that have one, ordered by the chapter they belong to.
+
+```
+book_timeline_add event="Mara finds the letter" \
+                  inStoryTime="Saturday night, ~23:30" \
+                  sortKey="1997-06-14T23:30" \
+                  chapterId="ch-003" \
+                  characterIds=["Mara", "Kell"]
+```
+
+Chapters and characters can be named rather than id'd — `chapterId="The Letter"`
+and `characterIds=["Mara"]` both resolve. An unknown name is rejected rather
+than stored, so a typo does not become a silent dangling reference.
+
+### What the continuity check does with it
+
+`book_continuity_check` cross-references the chapter against the timeline and
+flags three things. All of them stay quiet unless the timeline actually has
+something to say — a chapter with no logged events is never second-guessed.
+
+| Flag | Severity | When |
+|------|----------|------|
+| Chronology vs chapter order | error | An event logged in this chapter happens *before* one logged in an earlier chapter. Either the chapter is a flashback or a `sortKey` is wrong. |
+| Weekday contradiction | error | The chapter names a weekday the logged event does not. |
+| Time-of-day contradiction | warning | The chapter reads as morning where the event says night. Only raised when the draft names exactly one time of day — a chapter that spans dawn to dusk legitimately mentions several. |
+| Absent character | warning | The timeline puts a character in this chapter but the prose never names them. |
+
+## Chapter Version History
+
+Every `book_chapter_update` that changes the prose files the previous text away
+first, under `.book-mcp/history/<chapter-id>/<timestamp>.md`. Nothing has to be
+switched on, and an update that only touches the title, synopsis or status does
+not create a version — neither does resubmitting prose that is byte-identical to
+what is already there.
+
+The last **20** versions of each chapter are kept; older ones are pruned as new
+ones arrive.
+
+`book_chapter_history_list` shows what is available, newest first, with each
+version's word count and how many lines separate it from the chapter as it
+stands now:
+
+```json
+{
+  "snapshots": [
+    {
+      "timestamp": "2026-09-22T14-30-00-000Z",
+      "savedAt": "2026-09-22T14:30:00.000Z",
+      "wordCount": 2140,
+      "versusCurrent": {
+        "linesAdded": 12,
+        "linesRemoved": 4,
+        "summary": "+12 / -4 lines to reach the current version"
+      }
+    }
+  ]
+}
+```
+
+`book_chapter_revert` restores one of them. It files the text it is about to
+replace as a new version first, so a revert is itself undoable — the response
+names the timestamp to revert to if you change your mind:
+
+```
+book_chapter_revert chapterId="ch-003" timestamp="2026-09-22T14-30-00-000Z"
+```
+
+Versions are stored per chapter **id**, not per file name, so renaming a chapter
+keeps its history with it.
+
+### Reviewing a revision
+
+`book_chapter_diff` shows what actually changed, so a revision can be reviewed
+without reading two full drafts side by side. With no timestamp it compares the
+current text against the most recent saved version:
+
+```
+book_chapter_diff chapterId="ch-003"
+book_chapter_diff chapterId="ch-003" timestamp="2026-09-22T14-30-00-000Z"
+book_chapter_diff chapterId="ch-003" context=5
+```
+
+```diff
+--- ch-003-the-arrival.md @ 2026-09-22T14:30:00.000Z
++++ ch-003-the-arrival.md (current)
+@@ -1,5 +1,6 @@
+ # The Arrival
+ 
+ She stepped off the train into rain.
+-The platform was empty.
++The platform was deserted.
+ A porter waved her through.
++Somewhere a bell rang.
+```
+
+It is a real unified diff, not a rendering that resembles one: the output is
+byte-for-byte what `diff -u` produces and applies with `patch`. Both are
+asserted in the tests, including across a few hundred randomised revisions. The
+line counts in `book_chapter_history_list` come from the same module, so a
+summary and a diff can never disagree.
+
+## Concurrent Tool Calls
+
+Every JSON document under `.book-mcp/` is read-modify-written: a tool reads the
+whole file, changes a field, and writes it back. The write itself is atomic — a
+temp file and a rename, so a reader never sees half a document — but that says
+nothing about two tool calls overlapping. If a handler yields between its read
+and its write, a second call can start from the same state and one of the two
+changes is lost.
+
+Each of those files therefore has an in-process queue keyed by its path
+(`src/storage/lock.ts`). Work on one file runs in the order it was requested;
+different files never wait on each other. What is held is the *whole*
+read-modify-write span, not the read and the write separately — locking those
+individually would add nothing, since each is already atomic on its own.
+
+Tools reach it through the transaction helpers in `src/storage/filestore.ts`
+(`updateRegistry`, `updateStoryBible`, `updateStyleGuide`, `updateOutline`,
+`updateCoverSpec`, `updateAuthorProfile`). Anything that changes one of these
+files should go through the matching helper rather than calling `get*` and
+`save*` in sequence. Read-only tools need no lock.
+
+A chapter rename is the one nested case: it holds `registry.json` and takes
+`outline.json` inside it. That order — registry, then outline — is the only one
+used anywhere, so the two cannot deadlock against each other.
+
+Two caveats worth knowing:
+
+- **This is an in-process queue, not a file lock.** One container serving one
+  project is what this server is built for. Two processes pointed at the same
+  project directory would still race.
+- **`oauth.json` is handled differently.** `OAuthStore` keeps the whole store in
+  memory and every mutator is synchronous, so a read and its write happen in one
+  tick and nothing can interleave. It needs no lock, and making its methods
+  async to take one would change the provider interface for no gain.
 
 ## Project Structure
 
@@ -271,10 +514,12 @@ When you initialize a book, the MCP creates this structure in your project direc
 your-book/
   .book-mcp/
     registry.json       # Book metadata, chapter list, word counts
-    story-bible.json    # Characters, settings, plot threads, timeline
+    story-bible.json    # Characters, settings, plot threads
+    timeline.json       # Story events in chronological order
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
+    history/            # Saved chapter versions, one folder per chapter id
     author-profile.json # Author bio and profile data
     trash/              # Chapter files removed by book_chapter_delete
   chapters/

@@ -1,13 +1,67 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { getStoryBible, saveStoryBible } from "../storage/filestore";
+import { getStoryBible, updateStoryBible } from "../storage/filestore";
 import { Character, Setting, PlotThread } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare } from "../utils/text";
 
-function generateId(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}`;
+// Ids were the millisecond the entry was created, which collides whenever two
+// are added inside the same millisecond — easy to hit when a tool call adds a
+// cast of characters in one go. Two characters sharing an id is worse than it
+// sounds: book_character_update looks one up by id and would silently amend
+// whichever came first.
+//
+// Called inside the story-bible transaction, so `existing` is the authoritative
+// list and a suffix is enough to guarantee uniqueness without randomness.
+function generateId(existing: { id: string }[], prefix: string): string {
+  const taken = new Set(existing.map((entry) => entry.id));
+  const base = `${prefix}-${Date.now().toString(36)}`;
+  if (!taken.has(base)) return base;
+
+  let suffix = 2;
+  while (taken.has(`${base}-${suffix}`)) suffix++;
+  return `${base}-${suffix}`;
 }
+
+// How a character speaks, as opposed to how the book is written. Shared by
+// book_character_add and book_character_update so both describe it identically.
+const voiceProfileSchema = z
+  .object({
+    vocabulary: z
+      .string()
+      .optional()
+      .default("")
+      .describe(
+        "Words and registers this character reaches for (e.g. 'nautical slang, no abstractions', 'clinical and Latinate')"
+      ),
+    sentenceLength: z
+      .enum(["clipped", "short", "medium", "long", "rambling", "varied"])
+      .optional()
+      .default("varied")
+      .describe("How long their sentences run"),
+    verbalTics: z
+      .array(z.string())
+      .optional()
+      .default([])
+      .describe(
+        "Repeated turns of phrase, matched literally against their dialogue (e.g. ['Look', 'aye', 'mate'])"
+      ),
+    neverSays: z
+      .array(z.string())
+      .optional()
+      .default([])
+      .describe(
+        "Words or phrases this character would never use. Matched literally, so give words rather than descriptions of a habit."
+      ),
+    notes: z
+      .string()
+      .optional()
+      .default("")
+      .describe("Anything else about how they sound"),
+  })
+  .describe(
+    "Optional per-character voice profile. book_style_check uses it to judge this character's dialogue against the global style guide."
+  );
 
 function requireBible() {
   const bible = getStoryBible();
@@ -35,11 +89,11 @@ export function registerStoryBibleTools(server: McpServer): void {
         .describe("Relationships to other characters"),
       firstAppearance: z.string().optional().default("").describe("Chapter ID of first appearance"),
       notes: z.string().optional().default("").describe("Additional notes"),
+      voiceProfile: voiceProfileSchema.optional(),
     },
     async (input) => {
-      const bible = requireBible();
       const character: Character = {
-        id: generateId("char"),
+        id: "",
         name: input.name,
         aliases: input.aliases,
         role: input.role,
@@ -49,9 +103,15 @@ export function registerStoryBibleTools(server: McpServer): void {
         relationships: input.relationships,
         firstAppearance: input.firstAppearance,
         notes: input.notes,
+        ...(input.voiceProfile ? { voiceProfile: input.voiceProfile } : {}),
       };
-      bible.characters.push(character);
-      saveStoryBible(bible);
+      // The read, the id, the push and the write all happen with
+      // story-bible.json held, so two characters added at once can neither
+      // overwrite one another nor be handed the same id.
+      await updateStoryBible((bible) => {
+        character.id = generateId(bible.characters, "char");
+        bible.characters.push(character);
+      });
 
       return {
         content: [
@@ -87,17 +147,19 @@ export function registerStoryBibleTools(server: McpServer): void {
             .optional(),
           firstAppearance: z.string().optional(),
           notes: z.string().optional(),
+          voiceProfile: voiceProfileSchema.optional(),
         })
         .describe("Fields to update"),
     },
     async ({ characterId, updates }) => {
-      const bible = requireBible();
-      const character = bible.characters.find((c) => c.id === characterId);
-      if (!character)
-        throw new BookMCPError(`Character "${characterId}" not found.`);
-
-      Object.assign(character, updates);
-      saveStoryBible(bible);
+      let character!: Character;
+      await updateStoryBible((bible) => {
+        const found = bible.characters.find((c) => c.id === characterId);
+        if (!found)
+          throw new BookMCPError(`Character "${characterId}" not found.`);
+        Object.assign(found, updates);
+        character = found;
+      });
 
       return {
         content: [
@@ -178,16 +240,17 @@ export function registerStoryBibleTools(server: McpServer): void {
       notes: z.string().optional().default("").describe("Additional notes"),
     },
     async (input) => {
-      const bible = requireBible();
       const setting: Setting = {
-        id: generateId("set"),
+        id: "",
         name: input.name,
         description: input.description,
         type: input.type,
         notes: input.notes,
       };
-      bible.settings.push(setting);
-      saveStoryBible(bible);
+      await updateStoryBible((bible) => {
+        setting.id = generateId(bible.settings, "set");
+        bible.settings.push(setting);
+      });
 
       return {
         content: [
@@ -262,16 +325,17 @@ export function registerStoryBibleTools(server: McpServer): void {
       summary: z.string().describe("Thread summary"),
     },
     async ({ title, openedIn, summary }) => {
-      const bible = requireBible();
       const thread: PlotThread = {
-        id: generateId("plot"),
+        id: "",
         title,
         status: "open",
         openedIn,
         summary,
       };
-      bible.plotThreads.push(thread);
-      saveStoryBible(bible);
+      await updateStoryBible((bible) => {
+        thread.id = generateId(bible.plotThreads, "plot");
+        bible.plotThreads.push(thread);
+      });
 
       return {
         content: [
@@ -297,14 +361,15 @@ export function registerStoryBibleTools(server: McpServer): void {
       resolvedIn: z.string().describe("Chapter ID where thread resolves"),
     },
     async ({ threadId, resolvedIn }) => {
-      const bible = requireBible();
-      const thread = bible.plotThreads.find((t) => t.id === threadId);
-      if (!thread)
-        throw new BookMCPError(`Plot thread "${threadId}" not found.`);
-
-      thread.status = "resolved";
-      thread.resolvedIn = resolvedIn;
-      saveStoryBible(bible);
+      let thread!: PlotThread;
+      await updateStoryBible((bible) => {
+        const found = bible.plotThreads.find((t) => t.id === threadId);
+        if (!found)
+          throw new BookMCPError(`Plot thread "${threadId}" not found.`);
+        found.status = "resolved";
+        found.resolvedIn = resolvedIn;
+        thread = found;
+      });
 
       return {
         content: [

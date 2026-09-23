@@ -41,7 +41,17 @@ export interface StoryBible {
   settings: Setting[];
   themes: string[];
   plotThreads: PlotThread[];
-  timeline: TimelineEvent[];
+  /**
+   * Where the timeline lives, rather than the timeline itself. Events point at
+   * chapters and characters by id, so keeping them in their own file avoids a
+   * second copy of anything the story bible already holds.
+   */
+  timelineRef?: string;
+  /**
+   * Events written inline by an older version of this server. Migrated into
+   * timeline.json the first time the timeline is read, then cleared.
+   */
+  timeline?: LegacyTimelineEvent[];
 }
 
 export interface Character {
@@ -54,6 +64,29 @@ export interface Character {
   traits: string[];
   relationships: { characterId: string; nature: string }[];
   firstAppearance: string;
+  notes: string;
+  /**
+   * How this character speaks, as distinct from how the book is written. The
+   * style guide is one voice for the whole manuscript; this is the voice of
+   * one person inside it, and book_style_check uses it to judge dialogue.
+   * Optional: most characters do not need one.
+   */
+  voiceProfile?: VoiceProfile;
+}
+
+export interface VoiceProfile {
+  /** Words and registers this character reaches for: "nautical slang", "clinical, Latinate". */
+  vocabulary: string;
+  /** How long their sentences run. */
+  sentenceLength: "clipped" | "short" | "medium" | "long" | "rambling" | "varied";
+  /** Repeated turns of phrase: "starts sentences with 'Look'", "never contracts". */
+  verbalTics: string[];
+  /**
+   * Things this character would never say. Checked literally against dialogue,
+   * so these should be words or phrases rather than descriptions of a habit.
+   */
+  neverSays: string[];
+  /** Anything else about how they sound. */
   notes: string;
 }
 
@@ -74,11 +107,39 @@ export interface PlotThread {
   summary: string;
 }
 
-export interface TimelineEvent {
+/** The shape story-bible.json used before timeline.json existed. */
+export interface LegacyTimelineEvent {
   id: string;
   event: string;
   chapterId: string;
   order: number;
+}
+
+export interface Timeline {
+  events: TimelineEvent[];
+}
+
+export interface TimelineEvent {
+  id: string;
+  /** What happens, in a sentence. */
+  event: string;
+  /**
+   * When it happens, as the story tells it: "Saturday night, ~23:30", "three
+   * winters before the siege". Free text, because a story's own clock rarely
+   * maps onto a calendar.
+   */
+  inStoryTime: string;
+  /**
+   * Optional sortable key that puts the event in order — an ISO-ish string
+   * ("1997-06-14T23:30") or any scheme that sorts lexicographically
+   * ("Y02-D14-2330"). Events without one sort after those that have one.
+   */
+  sortKey?: string;
+  chapterId?: string;
+  characterIds: string[];
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface StyleGuide {

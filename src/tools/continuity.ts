@@ -3,8 +3,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getRegistry,
   getStoryBible,
+  getTimeline,
   readChapterFile,
 } from "../storage/filestore";
+import { checkTimeline } from "./timeline-continuity";
 import { BookMCPError } from "../utils/errors";
 import { CAPITALIZED_WORD_PATTERN, normalizeForCompare } from "../utils/text";
 
@@ -38,6 +40,15 @@ export function registerContinuityTools(server: McpServer): void {
       const content = readChapterFile(chapter.filename);
       const contentLower = normalizeForCompare(content);
       const flags: ContinuityFlag[] = [];
+
+      // Cross-reference the draft against the logged timeline before the
+      // story-bible checks, so a contradicted date leads the report.
+      const timeline = getTimeline();
+      if (timeline) {
+        flags.push(
+          ...checkTimeline(chapter.id, content, registry, bible, timeline.events)
+        );
+      }
 
       // Check character name consistency
       for (const character of bible.characters) {
@@ -172,11 +183,28 @@ export function registerContinuityTools(server: McpServer): void {
         summary = `Found ${errorCount} error(s) and ${warningCount} warning(s).`;
       }
 
+      const eventsForChapter =
+        timeline?.events.filter((e) => e.chapterId === chapter.id).length ?? 0;
+
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ flags, summary }, null, 2),
+            text: JSON.stringify(
+              {
+                flags,
+                summary,
+                timelineEventsForChapter: eventsForChapter,
+                ...(timeline && eventsForChapter === 0
+                  ? {
+                      timelineNote:
+                        "No timeline events are logged for this chapter, so its timing was not cross-referenced. Log them with book_timeline_add.",
+                    }
+                  : {}),
+              },
+              null,
+              2
+            ),
           },
         ],
       };

@@ -3,7 +3,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getRegistry,
   getAuthorProfile,
-  saveAuthorProfile,
+  updateAuthorProfile,
+  upsertAuthorProfile,
+  writeAuthorProfile,
 } from "../storage/filestore";
 import { AuthorProfile } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
@@ -283,7 +285,7 @@ export function registerAuthorTools(server: McpServer): void {
         profile.generatedIntro += " " + additionalContext;
       }
 
-      saveAuthorProfile(profile);
+      await writeAuthorProfile(profile);
 
       const fetchedFields = Object.entries(linkedinData)
         .filter(([_, v]) => v !== undefined && v !== null)
@@ -349,29 +351,31 @@ export function registerAuthorTools(server: McpServer): void {
       interests: z.array(z.string()).optional().describe("Personal interests"),
     },
     async (input) => {
-      let profile = getAuthorProfile();
-      if (!profile) {
-        const registry = getRegistry();
-        if (!registry)
-          throw new BookMCPError("No book project found. Run book_init first.");
-        profile = {
-          name: registry.author,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-
-      // Merge updates
-      if (input.headline !== undefined) profile.headline = input.headline;
-      if (input.location !== undefined) profile.location = input.location;
-      if (input.summary !== undefined) profile.summary = input.summary;
-      if (input.experience !== undefined) profile.experience = input.experience;
-      if (input.education !== undefined) profile.education = input.education;
-      if (input.skills !== undefined) profile.skills = input.skills;
-      if (input.publications !== undefined) profile.publications = input.publications;
-      if (input.interests !== undefined) profile.interests = input.interests;
-      profile.updatedAt = new Date().toISOString();
-
-      saveAuthorProfile(profile);
+      // Doubles as the tool that establishes the profile, so it upserts
+      // rather than amending an existing document.
+      const profile = await upsertAuthorProfile(
+        () => {
+          const registry = getRegistry();
+          if (!registry)
+            throw new BookMCPError("No book project found. Run book_init first.");
+          return {
+            name: registry.author,
+            updatedAt: new Date().toISOString(),
+          };
+        },
+        (current) => {
+          // Merge updates
+          if (input.headline !== undefined) current.headline = input.headline;
+          if (input.location !== undefined) current.location = input.location;
+          if (input.summary !== undefined) current.summary = input.summary;
+          if (input.experience !== undefined) current.experience = input.experience;
+          if (input.education !== undefined) current.education = input.education;
+          if (input.skills !== undefined) current.skills = input.skills;
+          if (input.publications !== undefined) current.publications = input.publications;
+          if (input.interests !== undefined) current.interests = input.interests;
+          current.updatedAt = new Date().toISOString();
+        }
+      );
 
       return {
         content: [
@@ -398,19 +402,16 @@ export function registerAuthorTools(server: McpServer): void {
     "Regenerate the author intro/bio from the current profile data. Run this after updating the profile.",
     {},
     async () => {
-      const profile = getAuthorProfile();
-      if (!profile)
-        throw new BookMCPError("No author profile found. Use book_author_from_linkedin or book_author_update_profile first.");
-
       const registry = getRegistry();
       if (!registry)
         throw new BookMCPError("No book project found. Run book_init first.");
 
-      const intros = generateAuthorIntro(profile, registry.genre, registry.title);
-      profile.generatedIntro = intros.full;
-      profile.generatedIntroShort = intros.short;
-      profile.updatedAt = new Date().toISOString();
-      saveAuthorProfile(profile);
+      const profile = await updateAuthorProfile((current) => {
+        const intros = generateAuthorIntro(current, registry.genre, registry.title);
+        current.generatedIntro = intros.full;
+        current.generatedIntroShort = intros.short;
+        current.updatedAt = new Date().toISOString();
+      });
 
       return {
         content: [
@@ -440,14 +441,11 @@ export function registerAuthorTools(server: McpServer): void {
       shortIntro: z.string().optional().describe("Short author intro (for marketing / social media)"),
     },
     async ({ fullIntro, shortIntro }) => {
-      const profile = getAuthorProfile();
-      if (!profile)
-        throw new BookMCPError("No author profile found. Use book_author_from_linkedin first.");
-
-      if (fullIntro !== undefined) profile.generatedIntro = fullIntro;
-      if (shortIntro !== undefined) profile.generatedIntroShort = shortIntro;
-      profile.updatedAt = new Date().toISOString();
-      saveAuthorProfile(profile);
+      const profile = await updateAuthorProfile((current) => {
+        if (fullIntro !== undefined) current.generatedIntro = fullIntro;
+        if (shortIntro !== undefined) current.generatedIntroShort = shortIntro;
+        current.updatedAt = new Date().toISOString();
+      });
 
       return {
         content: [
