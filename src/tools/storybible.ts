@@ -23,6 +23,46 @@ function generateId(existing: { id: string }[], prefix: string): string {
   return `${base}-${suffix}`;
 }
 
+// How a character speaks, as opposed to how the book is written. Shared by
+// book_character_add and book_character_update so both describe it identically.
+const voiceProfileSchema = z
+  .object({
+    vocabulary: z
+      .string()
+      .optional()
+      .default("")
+      .describe(
+        "Words and registers this character reaches for (e.g. 'nautical slang, no abstractions', 'clinical and Latinate')"
+      ),
+    sentenceLength: z
+      .enum(["clipped", "short", "medium", "long", "rambling", "varied"])
+      .optional()
+      .default("varied")
+      .describe("How long their sentences run"),
+    verbalTics: z
+      .array(z.string())
+      .optional()
+      .default([])
+      .describe(
+        "Repeated turns of phrase, matched literally against their dialogue (e.g. ['Look', 'aye', 'mate'])"
+      ),
+    neverSays: z
+      .array(z.string())
+      .optional()
+      .default([])
+      .describe(
+        "Words or phrases this character would never use. Matched literally, so give words rather than descriptions of a habit."
+      ),
+    notes: z
+      .string()
+      .optional()
+      .default("")
+      .describe("Anything else about how they sound"),
+  })
+  .describe(
+    "Optional per-character voice profile. book_style_check uses it to judge this character's dialogue against the global style guide."
+  );
+
 function requireBible() {
   const bible = getStoryBible();
   if (!bible)
@@ -49,6 +89,7 @@ export function registerStoryBibleTools(server: McpServer): void {
         .describe("Relationships to other characters"),
       firstAppearance: z.string().optional().default("").describe("Chapter ID of first appearance"),
       notes: z.string().optional().default("").describe("Additional notes"),
+      voiceProfile: voiceProfileSchema.optional(),
     },
     async (input) => {
       const character: Character = {
@@ -62,6 +103,7 @@ export function registerStoryBibleTools(server: McpServer): void {
         relationships: input.relationships,
         firstAppearance: input.firstAppearance,
         notes: input.notes,
+        ...(input.voiceProfile ? { voiceProfile: input.voiceProfile } : {}),
       };
       // The read, the id, the push and the write all happen with
       // story-bible.json held, so two characters added at once can neither
@@ -105,6 +147,7 @@ export function registerStoryBibleTools(server: McpServer): void {
             .optional(),
           firstAppearance: z.string().optional(),
           notes: z.string().optional(),
+          voiceProfile: voiceProfileSchema.optional(),
         })
         .describe("Fields to update"),
     },

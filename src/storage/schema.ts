@@ -65,6 +65,29 @@ export interface Character {
   relationships: { characterId: string; nature: string }[];
   firstAppearance: string;
   notes: string;
+  /**
+   * How this character speaks, as distinct from how the book is written. The
+   * style guide is one voice for the whole manuscript; this is the voice of
+   * one person inside it, and book_style_check uses it to judge dialogue.
+   * Optional: most characters do not need one.
+   */
+  voiceProfile?: VoiceProfile;
+}
+
+export interface VoiceProfile {
+  /** Words and registers this character reaches for: "nautical slang", "clinical, Latinate". */
+  vocabulary: string;
+  /** How long their sentences run. */
+  sentenceLength: "clipped" | "short" | "medium" | "long" | "rambling" | "varied";
+  /** Repeated turns of phrase: "starts sentences with 'Look'", "never contracts". */
+  verbalTics: string[];
+  /**
+   * Things this character would never say. Checked literally against dialogue,
+   * so these should be words or phrases rather than descriptions of a habit.
+   */
+  neverSays: string[];
+  /** Anything else about how they sound. */
+  notes: string;
 }
 
 export interface Setting {

@@ -1,10 +1,17 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
+  getStoryBible,
   getStyleGuide,
   updateStyleGuide,
   writeStyleGuide,
 } from "../storage/filestore";
+import {
+  attributeDialogue,
+  checkVoice,
+  checkVoiceConfusion,
+  extractDialogue,
+} from "./voice";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare, wholeWordRegExp } from "../utils/text";
 
@@ -54,12 +61,18 @@ export function registerStyleGuideTools(server: McpServer): void {
 
   server.tool(
     "book_style_check",
-    "Check a passage against the style guide rules",
+    "Check a passage against the style guide. Given a character, also checks that character's dialogue against their own voice profile, flagging lines that do not sound like them.",
     {
       passage: z.string().describe("Text passage to check"),
       chapterId: z.string().optional().describe("Optional chapter ID for context"),
+      characterId: z
+        .string()
+        .optional()
+        .describe(
+          "Optional character whose dialogue this passage is. Given one, the passage is checked against their voice profile as well as the global style guide."
+        ),
     },
-    async ({ passage, chapterId }) => {
+    async ({ passage, chapterId, characterId }) => {
       const guide = getStyleGuide();
       if (!guide)
         throw new BookMCPError("No style guide found. Use book_style_set to create one.");
@@ -138,16 +151,85 @@ export function registerStyleGuideTools(server: McpServer): void {
         }
       }
 
+      // Everything above judges the passage as prose. What follows judges one
+      // character's dialogue inside it, which is a different question: the
+      // style guide is the book's voice, a voice profile is one person's.
+      const voiceViolations: {
+        rule: string;
+        excerpt: string;
+        suggestion: string;
+      }[] = [];
+      let voiceSummary: Record<string, unknown> | undefined;
+
+      if (characterId !== undefined) {
+        const bible = getStoryBible();
+        if (!bible)
+          throw new BookMCPError("No story bible found. Run book_init first.");
+
+        const needle = normalizeForCompare(characterId);
+        const character = bible.characters.find(
+          (c) =>
+            c.id === characterId ||
+            normalizeForCompare(c.name) === needle ||
+            c.aliases.some((a) => normalizeForCompare(a) === needle)
+        );
+        if (!character)
+          throw new BookMCPError(`Character "${characterId}" not found.`);
+
+        if (!character.voiceProfile) {
+          voiceSummary = {
+            character: character.name,
+            checked: false,
+            note: `${character.name} has no voice profile. Add one with book_character_update to check their dialogue against it.`,
+          };
+        } else {
+          const dialogue = extractDialogue(passage);
+          const { own, others } = attributeDialogue(character, dialogue);
+
+          voiceViolations.push(...checkVoice(character, own));
+          voiceViolations.push(
+            ...checkVoiceConfusion(character, own, bible.characters)
+          );
+
+          voiceSummary = {
+            character: character.name,
+            checked: true,
+            dialogueLinesFound: dialogue.length,
+            linesAttributedToCharacter: own.length,
+            linesAttributedToOthers: others.length,
+            voiceProfile: character.voiceProfile,
+            ...(dialogue.length === 0
+              ? {
+                  note: "No quoted dialogue found in this passage, so only the global style guide was applied.",
+                }
+              : {}),
+          };
+        }
+      }
+
+      const allViolations = [...violations, ...voiceViolations];
+
       let score: "clean" | "minor_issues" | "needs_work";
-      if (violations.length === 0) score = "clean";
-      else if (violations.length <= 2) score = "minor_issues";
+      if (allViolations.length === 0) score = "clean";
+      else if (allViolations.length <= 2) score = "minor_issues";
       else score = "needs_work";
 
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ violations, score, chapterId }, null, 2),
+            text: JSON.stringify(
+              {
+                violations: allViolations,
+                styleViolations: violations,
+                voiceViolations,
+                score,
+                chapterId,
+                ...(voiceSummary ? { voice: voiceSummary } : {}),
+              },
+              null,
+              2
+            ),
           },
         ],
       };

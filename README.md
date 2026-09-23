@@ -233,7 +233,7 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 |------|-------------|
 | `book_style_set` | Set the full style guide (voice, POV, tense, tone) |
 | `book_style_get` | Retrieve the style guide |
-| `book_style_check` | Check a passage against the style guide |
+| `book_style_check` | Check a passage against the style guide, and optionally one character's dialogue against their voice profile |
 | `book_style_add_influence` | Add an author influence |
 | `book_style_list_influences` | List author influences |
 | `book_style_remove_influence` | Remove an author influence |
@@ -303,6 +303,55 @@ history of the one it replaced.
 
 Both tools (and every other chapter tool) accept either a chapter id or the
 current chapter title.
+
+## Per-Character Voice
+
+The style guide is the book's voice — one POV, one tense, one set of habits for
+the whole manuscript. A `voice_profile` is one *person's* voice inside it, and
+it is optional: most characters never need one, and a character without one is
+checked exactly as before.
+
+```
+book_character_add name="Kell" role="supporting" description="Dockhand." \
+  voiceProfile='{
+    "vocabulary": "nautical, plain, no abstractions",
+    "sentenceLength": "clipped",
+    "verbalTics": ["aye", "mate"],
+    "neverSays": ["furthermore", "consequently"],
+    "notes": "Never explains himself."
+  }'
+```
+
+`neverSays` and `verbalTics` are matched **literally** against dialogue, so they
+want words and phrases rather than descriptions of a habit: `"furthermore"`
+works, `"avoids formal connectives"` does not.
+
+Pass a character to `book_style_check` and the passage is judged twice — against
+the global style guide as prose, and against that character's profile as speech:
+
+```
+book_style_check passage="..." characterId="Kell"
+```
+
+| Flag | When |
+|------|------|
+| Would never say | A line contains one of the character's `neverSays` terms. |
+| Sentence length | A line runs well outside the band for their `sentenceLength`. The bands overlap deliberately — dialogue is uneven, and one short retort from a rambling character means nothing. |
+| Missing verbal tics | The character has tics and none appears across three or more of their lines. A single line is not evidence. |
+| Sounds like someone else | The line fits another character's profile *better*, and carries one of that character's markers. Merely not breaking someone else's rules is not enough. |
+
+### How speakers are worked out
+
+Prose is not parseable, so attribution is deliberately conservative. A line
+tagged `"..." Kell said` or `"..." said Kell` goes to Kell; the tag is read only
+up to the neighbouring quotation mark, so an untagged line cannot borrow the
+next line's tag. A line with **no** tag is treated as the character's own, on
+the grounds that you named them when you asked. Another character's tagged
+dialogue in the same passage is never charged against them.
+
+Straight quotes, curly quotes, guillemets and low-9 quotes are all recognised.
+The response reports `linesAttributedToCharacter` and `linesAttributedToOthers`
+so you can see how the passage was split before trusting the flags.
 
 ## The Timeline
 

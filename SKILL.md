@@ -23,7 +23,8 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 6. `book_chapter_create` or `book_chapter_update` — save it
 7. `book_timeline_add` — log what happened and when, while it is fresh
 8. `book_continuity_check` — run before marking as review/final
-9. `book_style_check` — verify voice consistency
+9. `book_style_check` — verify voice consistency; pass characterId to check
+   a character's dialogue against their own voice profile as well
 
 ## Workflow for Revising the Chapter List
 - `book_chapter_rename` — change a chapter title; it also renames the file, the
@@ -51,6 +52,11 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 
 ## Important Rules
 - ALWAYS load style guide before generating any prose
+- Check dialogue-heavy passages per character with
+  `book_style_check characterId=...`, not just once for the whole passage —
+  the global guide cannot tell one speaker from another
+- Put words in voice_profile neverSays and verbalTics, not descriptions of
+  habits: they are matched literally against dialogue
 - NEVER invent character details — always check story bible first
 - Run continuity check before marking any chapter "final"
 - Keep synopsis fields updated as chapters evolve
