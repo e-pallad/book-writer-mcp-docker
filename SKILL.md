@@ -41,7 +41,9 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
    each one is from the current text
 2. Draft the revision and save it with `book_chapter_update content=...` — the
    previous prose is filed away automatically, no separate step needed
-3. `book_chapter_revert chapterId=... timestamp=...` — restore an earlier
+3. `book_chapter_diff` — show the author what the revision actually changed,
+   rather than making them compare two full drafts
+4. `book_chapter_revert chapterId=... timestamp=...` — restore an earlier
    version if the revision went the wrong way; the text it replaces is saved
    first, so the revert can itself be reverted
 

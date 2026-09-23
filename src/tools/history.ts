@@ -12,7 +12,7 @@ import {
   readableTimestamp,
   saveSnapshot,
 } from "../storage/history";
-import { diffStats } from "../utils/diff";
+import { diffStats, unifiedDiff } from "../utils/diff";
 import { countWords } from "../utils/wordcount";
 import { requireProject, resolveChapter } from "./manuscript";
 
@@ -124,6 +124,65 @@ export function registerHistoryTools(server: McpServer): void {
         wordCount: chapter.wordCount,
         changes: { linesAdded: added, linesRemoved: removed },
         meta: chapter,
+      });
+    }
+  );
+
+  // book_chapter_diff
+  server.tool(
+    "book_chapter_diff",
+    "Show a unified diff between a saved version of a chapter and its current content, so a revision can be reviewed without reading both drafts in full. Defaults to the most recent saved version.",
+    {
+      chapterId: z
+        .string()
+        .describe('Chapter ID (e.g. "ch-001") or chapter title'),
+      timestamp: z
+        .string()
+        .optional()
+        .describe(
+          "Snapshot timestamp to compare against (default: the most recent saved version)"
+        ),
+      context: z
+        .number()
+        .optional()
+        .default(3)
+        .describe("Unchanged lines to show around each change (default: 3)"),
+    },
+    async ({ chapterId, timestamp, context }) => {
+      const registry = requireProject();
+      const chapter = resolveChapter(registry, chapterId);
+
+      const snapshots = listSnapshots(chapter.id);
+      if (snapshots.length === 0) {
+        return jsonResult({
+          chapterId: chapter.id,
+          title: chapter.title,
+          message:
+            "This chapter has no saved versions yet, so there is nothing to compare against. One is filed on the next book_chapter_update that changes the prose.",
+          diff: "",
+        });
+      }
+
+      const target = timestamp ?? snapshots[0].timestamp;
+      const before = readSnapshot(chapter.id, target);
+      const after = readChapterFile(chapter.filename);
+
+      const diff = unifiedDiff(before, after, {
+        fromLabel: `${chapter.filename} @ ${readableTimestamp(target)}`,
+        toLabel: `${chapter.filename} (current)`,
+        context,
+      });
+      const { added, removed } = diffStats(before, after);
+
+      return jsonResult({
+        chapterId: chapter.id,
+        title: chapter.title,
+        from: { timestamp: target, savedAt: readableTimestamp(target) },
+        to: "current",
+        linesAdded: added,
+        linesRemoved: removed,
+        unchanged: diff === "",
+        diff: diff || "No differences: the saved version matches the current content.",
       });
     }
   );

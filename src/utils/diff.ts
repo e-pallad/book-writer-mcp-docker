@@ -24,7 +24,94 @@ const MAX_EDIT_DISTANCE = 4000;
 // an LF one would otherwise read as "every line changed".
 export function splitLines(text: string): string[] {
   if (text === "") return [];
-  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  // A trailing newline terminates the last line rather than opening an empty
+  // one. Counting it as a line is what diff(1) does not do, and a phantom
+  // extra line makes every hunk header one too long — enough for patch(1) to
+  // reject the result.
+  if (lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+// A file whose last line has no terminating newline is marked in the output,
+// so applying the diff reproduces that byte-for-byte too.
+function endsWithNewline(text: string): boolean {
+  return text === "" || /\n$/.test(text.replace(/\r\n?/g, "\n"));
+}
+
+const NO_NEWLINE_MARKER = "\\ No newline at end of file";
+
+/**
+ * Turns context lines that are not really equal into a removal and an addition.
+ *
+ * Two lines with the same text still differ if one of them ends the file
+ * without a newline and the other does not. That happens whenever a line is
+ * the last of one side but not of the other, as well as when both sides end on
+ * it with different termination. diff(1) renders those as a change carrying
+ * the no-newline marker, and a diff that calls them context does not apply
+ * cleanly.
+ */
+function splitUnterminatedContext(
+  edits: Edit[],
+  beforeCount: number,
+  afterCount: number,
+  beforeComplete: boolean,
+  afterComplete: boolean
+): Edit[] {
+  if (beforeComplete && afterComplete) return edits;
+
+  const result: Edit[] = [];
+  let beforeIndex = 0;
+  let afterIndex = 0;
+
+  for (const edit of edits) {
+    if (edit.type !== "equal") {
+      result.push(edit);
+      if (edit.type === "remove") beforeIndex++;
+      else afterIndex++;
+      continue;
+    }
+
+    // A line is terminated unless it is the final line of a file that has no
+    // trailing newline.
+    const beforeTerminated = beforeIndex !== beforeCount - 1 || beforeComplete;
+    const afterTerminated = afterIndex !== afterCount - 1 || afterComplete;
+
+    if (beforeTerminated === afterTerminated) {
+      result.push(edit);
+    } else {
+      result.push({ type: "remove", line: edit.line });
+      result.push({ type: "add", line: edit.line });
+    }
+
+    beforeIndex++;
+    afterIndex++;
+  }
+
+  return result;
+}
+
+// Within a run of changes, every removal is listed before every addition. The
+// raw edit script interleaves them (-a +A -b +B); conventional unified diffs,
+// diff(1) included, group them (-a -b +A +B). Order within each side is kept.
+function groupChanges(edits: Edit[]): Edit[] {
+  const grouped: Edit[] = [];
+  let index = 0;
+
+  while (index < edits.length) {
+    if (edits[index].type === "equal") {
+      grouped.push(edits[index++]);
+      continue;
+    }
+    const run: Edit[] = [];
+    while (index < edits.length && edits[index].type !== "equal") {
+      run.push(edits[index++]);
+    }
+    grouped.push(...run.filter((edit) => edit.type === "remove"));
+    grouped.push(...run.filter((edit) => edit.type === "add"));
+  }
+
+  return grouped;
 }
 
 /**
@@ -153,10 +240,10 @@ function buildHunks(edits: Edit[], context: number): Hunk[] {
           current = null;
           // What is left over is leading context for the next hunk: dropping
           // it would leave a later change with no context in front of it.
-          pendingEqual = pendingEqual.slice(context);
-          if (pendingEqual.length > context) {
-            pendingEqual = pendingEqual.slice(-context);
-          }
+          // At context 0 there is no such thing, and slice(-0) would keep the
+          // whole run rather than none of it.
+          pendingEqual =
+            context === 0 ? [] : pendingEqual.slice(context).slice(-context);
         }
       } else {
         pendingEqual.push(edit);
@@ -210,6 +297,15 @@ export interface UnifiedDiffOptions {
   context?: number;
 }
 
+// One side of a hunk header. A single-line range prints as a bare line number,
+// and an empty one is numbered from the line it follows — both as diff(1)
+// writes them, and both load-bearing for patch(1).
+function range(start: number, count: number): string {
+  if (count === 0) return `${start - 1},0`;
+  if (count === 1) return `${start}`;
+  return `${start},${count}`;
+}
+
 /** A standard unified diff, readable by eye and by `patch`. */
 export function unifiedDiff(
   before: string,
@@ -217,8 +313,20 @@ export function unifiedDiff(
   options: UnifiedDiffOptions = {}
 ): string {
   const context = options.context ?? 3;
-  const edits = diffLines(splitLines(before), splitLines(after));
-  const hunks = buildHunks(edits, context);
+  const beforeLines = splitLines(before);
+  const afterLines = splitLines(after);
+  const beforeComplete = endsWithNewline(before);
+  const afterComplete = endsWithNewline(after);
+
+  const edits = splitUnterminatedContext(
+    diffLines(beforeLines, afterLines),
+    beforeLines.length,
+    afterLines.length,
+    beforeComplete,
+    afterComplete
+  );
+
+  const hunks = buildHunks(groupChanges(edits), context);
   if (hunks.length === 0) return "";
 
   const lines = [
@@ -227,15 +335,41 @@ export function unifiedDiff(
   ];
 
   for (const hunk of hunks) {
-    // A zero-length side is numbered from the line before it, per the format.
-    const beforeStart = hunk.beforeLines === 0 ? hunk.beforeStart - 1 : hunk.beforeStart;
-    const afterStart = hunk.afterLines === 0 ? hunk.afterStart - 1 : hunk.afterStart;
     lines.push(
-      `@@ -${beforeStart},${hunk.beforeLines} +${afterStart},${hunk.afterLines} @@`
+      `@@ -${range(hunk.beforeStart, hunk.beforeLines)} +${range(
+        hunk.afterStart,
+        hunk.afterLines
+      )} @@`
     );
+
+    // Line numbers within the hunk, so the last line of either side can be
+    // recognised and marked when it carries no terminating newline.
+    let beforePos = hunk.beforeStart;
+    let afterPos = hunk.afterStart;
+
     for (const edit of hunk.edits) {
       const marker = edit.type === "add" ? "+" : edit.type === "remove" ? "-" : " ";
       lines.push(`${marker}${edit.line}`);
+
+      const consumesBefore = edit.type !== "add";
+      const consumesAfter = edit.type !== "remove";
+      const beforeIsLast = consumesBefore && beforePos === beforeLines.length;
+      const afterIsLast = consumesAfter && afterPos === afterLines.length;
+      if (consumesBefore) beforePos++;
+      if (consumesAfter) afterPos++;
+
+      if (edit.type === "remove" && beforeIsLast && !beforeComplete) {
+        lines.push(NO_NEWLINE_MARKER);
+      } else if (edit.type === "add" && afterIsLast && !afterComplete) {
+        lines.push(NO_NEWLINE_MARKER);
+      } else if (
+        edit.type === "equal" &&
+        beforeIsLast &&
+        afterIsLast &&
+        (!beforeComplete || !afterComplete)
+      ) {
+        lines.push(NO_NEWLINE_MARKER);
+      }
     }
   }
 

@@ -192,6 +192,7 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_chapter_reorder` | Change chapter order |
 | `book_chapter_history_list` | List a chapter's saved versions with a per-version diff summary |
 | `book_chapter_revert` | Restore a saved version (the text it replaces is saved first) |
+| `book_chapter_diff` | Unified diff between a saved version and the current text |
 | `book_stats` | Manuscript-wide statistics |
 
 ### Story Bible (world-building & continuity)
@@ -438,6 +439,37 @@ book_chapter_revert chapterId="ch-003" timestamp="2026-09-22T14-30-00-000Z"
 
 Versions are stored per chapter **id**, not per file name, so renaming a chapter
 keeps its history with it.
+
+### Reviewing a revision
+
+`book_chapter_diff` shows what actually changed, so a revision can be reviewed
+without reading two full drafts side by side. With no timestamp it compares the
+current text against the most recent saved version:
+
+```
+book_chapter_diff chapterId="ch-003"
+book_chapter_diff chapterId="ch-003" timestamp="2026-09-22T14-30-00-000Z"
+book_chapter_diff chapterId="ch-003" context=5
+```
+
+```diff
+--- ch-003-the-arrival.md @ 2026-09-22T14:30:00.000Z
++++ ch-003-the-arrival.md (current)
+@@ -1,5 +1,6 @@
+ # The Arrival
+ 
+ She stepped off the train into rain.
+-The platform was empty.
++The platform was deserted.
+ A porter waved her through.
++Somewhere a bell rang.
+```
+
+It is a real unified diff, not a rendering that resembles one: the output is
+byte-for-byte what `diff -u` produces and applies with `patch`. Both are
+asserted in the tests, including across a few hundred randomised revisions. The
+line counts in `book_chapter_history_list` come from the same module, so a
+summary and a diff can never disagree.
 
 ## Concurrent Tool Calls
 
