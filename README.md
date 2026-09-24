@@ -245,6 +245,7 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 |------|-------------|
 | `book_export_markdown` | Compile all chapters into a single Markdown file |
 | `book_export_docx` | Export a formatted `.docx` with title page, TOC, and page numbers |
+| `book_export_epub` | Export a valid EPUB3 with a title page and generated table of contents |
 
 ### Preview
 
@@ -528,10 +529,59 @@ your-book/
     ...
   manuscript.md         # Created by book_export_markdown
   manuscript.docx       # Created by book_export_docx
+  manuscript.epub       # Created by book_export_epub
   preview.html          # Created by book_preview
   preview/
     server.js           # Created by book_preview_server
 ```
+
+## EPUB Export
+
+`book_export_epub` compiles the manuscript into an EPUB3 file: a title page, a
+table of contents generated from the chapter titles, and one XHTML document per
+chapter.
+
+```
+book_export_epub
+book_export_epub language="de" identifier="urn:isbn:9780000000000"
+book_export_epub outputPath="./drafts/wip.epub" includeChapters=["ch-001","ch-002"]
+```
+
+Chapter selection matches `book_export_markdown`: an explicit list if you give
+one, otherwise every `final` and `review` chapter, otherwise everything. A
+chapter that is empty on disk is skipped and reported rather than shipped as a
+blank page.
+
+The author comes from `author-profile.json` when a profile exists, falling back
+to the name `book_init` was given; the response says which was used. `language`
+is a BCP 47 tag and defaults to `en` — set it, because reading systems use it
+for hyphenation and text-to-speech. `identifier` takes an ISBN if you have one
+(`urn:isbn:...`); a random UUID is generated if you don't, which is fine for a
+draft but should be a real identifier before publishing.
+
+No new dependency was added for this: `jszip` was already in the tree under
+`docx`, and is now declared directly since the exporter uses it.
+
+### Validity
+
+The output is checked against [epubcheck](https://github.com/w3c/epubcheck), the
+reference implementation of the specification, and passes with no errors or
+warnings under EPUB 3.3 rules. epubcheck is a 30 MB Java tool, so it is not
+vendored; the test that uses it marks itself skipped when it is absent rather
+than reporting a pass it did not earn. To run it:
+
+```bash
+curl -sSLo /tmp/epubcheck.zip \
+  https://github.com/w3c/epubcheck/releases/download/v5.1.0/epubcheck-5.1.0.zip
+unzip -q /tmp/epubcheck.zip -d /tmp
+EPUBCHECK_JAR=/tmp/epubcheck-5.1.0/epubcheck.jar npm test
+```
+
+The structural checks run either way: that `mimetype` is the first archive entry
+and stored uncompressed (readers identify the file by reading it at a fixed
+offset), that the required documents are present, and that chapter content is
+XHTML rather than HTML — `<br>` instead of `<br />` is a parse error that makes
+readers reject an otherwise fine book.
 
 ## The Preview Reader
 

@@ -5,36 +5,8 @@ import * as path from "path";
 import { getRegistry, readChapterFile } from "../storage/filestore";
 import { BookMCPError } from "../utils/errors";
 import { countWords } from "../utils/wordcount";
+import { escapeHtml, markdownToHtml } from "../utils/markdown";
 
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function markdownToHtml(md: string): string {
-  let html = escapeHtml(md);
-
-  // Process headers in descending specificity to avoid partial matches
-  html = html.replace(/^---$/gm, "<hr>");
-  html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
-  html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
-  html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
-
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
-  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
-
-  const blocks = html.split(/\n\n+/);
-  html = blocks
-    .map((block) => {
-      block = block.trim();
-      if (!block) return "";
-      if (/^<(h[1-3]|hr)/.test(block)) return block;
-      return `<p>${block.replace(/\n/g, "<br>")}</p>`;
-    })
-    .join("\n");
-
-  return html;
-}
 
 function buildHtmlPage(title: string, author: string, content: string, wordCount: number): string {
   return `<!DOCTYPE html>

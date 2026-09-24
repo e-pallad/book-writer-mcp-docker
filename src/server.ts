@@ -5,6 +5,7 @@ import { registerOutlineTools } from "./tools/outline";
 import { registerStyleGuideTools } from "./tools/styleguide";
 import { registerContinuityTools } from "./tools/continuity";
 import { registerExportTools } from "./tools/export";
+import { registerEpubTools } from "./tools/epub";
 import { registerCoverTools } from "./tools/cover";
 import { registerAuthorTools } from "./tools/author";
 import { registerPreviewTools } from "./tools/preview";
@@ -28,6 +29,7 @@ export function createServer(): McpServer {
   registerStyleGuideTools(server);
   registerContinuityTools(server);
   registerExportTools(server);
+  registerEpubTools(server);
   registerCoverTools(server);
   registerAuthorTools(server);
   registerPreviewTools(server);
