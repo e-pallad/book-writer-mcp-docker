@@ -263,6 +263,8 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_cover_get_spec` | Retrieve the cover spec |
 | `book_cover_generate_prompt` | Generate an AI image prompt from the cover spec |
 | `book_cover_checklist` | KDP publishing readiness checklist |
+| `book_ai_disclosure_generate` | Work out what KDP needs declared about AI use, and record it |
+| `book_ai_disclosure_get` | Read back the recorded AI disclosure |
 
 ### Author Profile
 
@@ -517,6 +519,7 @@ your-book/
     registry.json       # Book metadata, chapter list, word counts
     story-bible.json    # Characters, settings, plot threads
     timeline.json       # Story events in chronological order
+    ai-disclosure.json  # Recorded AI content declaration for KDP
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
@@ -534,6 +537,56 @@ your-book/
   preview/
     server.js           # Created by book_preview_server
 ```
+
+## AI Content Disclosure
+
+Amazon asks publishers to declare AI-generated content. The distinction that
+matters, and the one most often got wrong, is **who created the content** — not
+how much you edited it afterwards:
+
+| | Definition | Declare to KDP? |
+|---|---|---|
+| **AI-generated** | An AI tool created the text, images or translation from your prompts. Editing it afterwards, however heavily, does not change this. | **Yes** |
+| **AI-assisted** | You created it; AI only brainstormed, outlined, edited, refined or error-checked. | **No** |
+
+```
+book_ai_disclosure_generate text="ai_assisted" images="ai_generated"
+```
+
+Each content type — text, images (cover *and* interior artwork), translations —
+is classified separately, because KDP asks about them separately. The response
+tells you exactly what to answer in the publishing form, records the decision in
+`.book-mcp/ai-disclosure.json`, and `book_cover_checklist` stops reminding you.
+
+Two things worth being clear about, because tools in this space often are not:
+
+- **The declaration is a form answer, not text in your book.** Amazon does not
+  want a disclosure printed in the front matter, and putting one there is not
+  what makes you compliant. A reader-facing note is offered anyway, explicitly
+  marked as optional, for authors who want to tell readers or who are selling
+  through a retailer or into a jurisdiction that asks for something different.
+- **AI-assisted work needs no declaration at all.** If you drafted the book and
+  used AI to tighten it, there is nothing to declare.
+
+You must declare again whenever you edit and republish, not just on first
+publication.
+
+### On the wording staying current
+
+The policy is held in one dated block in `src/tools/ai-disclosure-policy.ts`
+carrying its source URL and the date it was last checked, and **every response
+repeats both**. This server has no network access at run time by design, so it
+cannot re-read Amazon's page for you — and a compliance answer that quietly
+served a stale cache would be worse than one that shows its age. Treat the
+verification date as the claim: if it is old, open the linked page before you
+publish.
+
+A disclosure recorded against an older reading of the policy than the server now
+carries is flagged when you read it back, so a project that predates a policy
+update does not look settled when it is not.
+
+To refresh: re-read the [KDP content guidelines](https://kdp.amazon.com/en_US/help/topic/G200672390),
+update that file, and bump `POLICY_VERIFIED_ON`.
 
 ## EPUB Export
 
@@ -622,6 +675,37 @@ The AI structures your knowledge into chapters, maintains a consistent professio
 > "My manuscript is done. Help me get it ready for Kindle Direct Publishing."
 
 Export to `.docx` with proper formatting, generate KDP-compliant cover specs with exact dimensions, run the publishing checklist, and preview the final result.
+
+## Development
+
+```bash
+npm install
+npm test          # builds, then runs the suite
+npm run typecheck
+npm run build     # esbuild bundles for both transports
+```
+
+### Type checking
+
+`npm run typecheck` covers `src/utils`, `src/storage`, `src/auth`, `src/http`
+and the pure-logic tool modules — everything where the logic lives. It runs in
+about a second.
+
+It deliberately leaves out the tool-registration modules, and the reason is
+worth knowing before you try to "fix" it: **a full-project `tsc` does not
+complete.** Every `server.tool()` call with a zod shape triggers
+`TS2589: Type instantiation is excessively deep and possibly infinite`. One
+such file takes ~90 seconds on its own; across all thirteen of them the
+compiler exhausts even a 13 GB heap and dies. This comes from the MCP SDK's
+`ZodRawShape` inference rather than from anything here, it is unaffected by the
+zod version (3.25 behaves the same as 3.22), and it predates this config — the
+project has never been fully type-checkable, which went unnoticed because the
+build uses esbuild, and esbuild strips types without checking them.
+
+Those modules are covered instead by esbuild (imports and syntax) and by the
+test suite, which exercises every tool through its real handler and zod schema.
+If the SDK's inference is fixed upstream, widen the `include` in
+`tsconfig.typecheck.json` and delete this section.
 
 ## Requirements
 

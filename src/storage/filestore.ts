@@ -9,6 +9,7 @@ import {
   CoverSpec,
   AuthorProfile,
   Timeline,
+  AiDisclosure,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
@@ -241,6 +242,21 @@ export function updateTimeline(
   });
 }
 
+// AI content disclosure
+export function getAiDisclosure(): AiDisclosure | null {
+  return readJSON<AiDisclosure>(mcpPath("ai-disclosure.json"));
+}
+
+export function saveAiDisclosure(disclosure: AiDisclosure): void {
+  writeJSON(mcpPath("ai-disclosure.json"), disclosure);
+}
+
+export function writeAiDisclosure(disclosure: AiDisclosure): Promise<void> {
+  return withFileLock(mcpPath("ai-disclosure.json"), () =>
+    saveAiDisclosure(disclosure)
+  );
+}
+
 // Style Guide
 export function getStyleGuide(): StyleGuide | null {
   return readJSON<StyleGuide>(mcpPath("style-guide.json"));
@@ -458,5 +474,6 @@ export function getProjectPaths() {
     coverSpecPath: mcpPath("cover-spec.json"),
     authorProfilePath: mcpPath("author-profile.json"),
     timelinePath: mcpPath(TIMELINE_FILE),
+    aiDisclosurePath: mcpPath("ai-disclosure.json"),
   };
 }

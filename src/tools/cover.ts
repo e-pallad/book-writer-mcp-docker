@@ -2,7 +2,13 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as fs from "fs";
 import * as path from "path";
-import { getCoverSpec, writeCoverSpec, getRegistry } from "../storage/filestore";
+import {
+  getCoverSpec,
+  writeCoverSpec,
+  getRegistry,
+  getAiDisclosure,
+} from "../storage/filestore";
+import { POLICY_SOURCE_URL } from "./ai-disclosure-policy";
 import { BookMCPError } from "../utils/errors";
 
 // Kindle Direct Publishing (KDP) cover specifications
@@ -409,6 +415,35 @@ export function registerCoverTools(server: McpServer): void {
         status: registry?.author ? "ready" : "needed",
         details: registry?.author || "Set via book_init",
       });
+
+      // KDP asks about AI-generated content at publishing time, for the cover
+      // artwork as much as the prose, so it belongs on the readiness list.
+      const aiDisclosure = getAiDisclosure();
+      if (!aiDisclosure) {
+        checklist.push({
+          item: "AI content disclosure",
+          status: "needed",
+          details: `Not yet worked out for this project. KDP asks you to declare AI-generated text, images and translations when you publish — cover art included. Run book_ai_disclosure_generate. Policy: ${POLICY_SOURCE_URL}`,
+        });
+      } else if (aiDisclosure.disclosureRequired) {
+        const generated = (["text", "images", "translations"] as const).filter(
+          (type) => aiDisclosure[type] === "ai_generated"
+        );
+        checklist.push({
+          item: "AI content disclosure",
+          status: "ready",
+          details: `Recorded: declare AI-generated ${generated.join(
+            " and "
+          )} in the KDP publishing form. Re-declare whenever you edit and republish.`,
+        });
+      } else {
+        checklist.push({
+          item: "AI content disclosure",
+          status: "ready",
+          details:
+            "Recorded: nothing here counts as AI-generated, so there is nothing to declare to KDP.",
+        });
+      }
 
       if (format === "kindle") {
         checklist.push(

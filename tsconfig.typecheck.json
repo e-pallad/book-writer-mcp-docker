@@ -1,0 +1,17 @@
+{
+  "//": "Type-checks everything that CAN be type-checked. See README, 'Type checking'.",
+  "//why": "A full-project `tsc` runs out of memory. Each server.tool() call with a zod shape triggers TS2589 ('Type instantiation is excessively deep'), costing ~90s and a great deal of heap for a single file; across the tool modules it exhausts a 13 GB heap. This is a property of the MCP SDK's ZodRawShape inference, not of this project's code, and it predates these config files. The tool-registration modules are therefore left to esbuild and the test suite; everything else is checked here, which is where the logic lives.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "src/utils/**/*",
+    "src/storage/**/*",
+    "src/auth/**/*",
+    "src/http/**/*",
+    "src/tools/voice.ts",
+    "src/tools/timeline-continuity.ts",
+    "src/tools/ai-disclosure-policy.ts"
+  ]
+}

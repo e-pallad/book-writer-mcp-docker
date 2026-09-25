@@ -7,6 +7,7 @@ import { registerContinuityTools } from "./tools/continuity";
 import { registerExportTools } from "./tools/export";
 import { registerEpubTools } from "./tools/epub";
 import { registerCoverTools } from "./tools/cover";
+import { registerAiDisclosureTools } from "./tools/ai-disclosure";
 import { registerAuthorTools } from "./tools/author";
 import { registerPreviewTools } from "./tools/preview";
 import { registerHistoryTools } from "./tools/history";
@@ -31,6 +32,7 @@ export function createServer(): McpServer {
   registerExportTools(server);
   registerEpubTools(server);
   registerCoverTools(server);
+  registerAiDisclosureTools(server);
   registerAuthorTools(server);
   registerPreviewTools(server);
 
