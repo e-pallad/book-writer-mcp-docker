@@ -710,9 +710,49 @@ The built-in preview renders your manuscript as a beautifully typeset book page:
 - Cream paper background with subtle shadow
 - Fixed word count badge
 - Responsive design for reading on any device
-- Auto-refresh every 10 seconds when using the preview server (re-run `book_export_markdown` after chapter edits to update content)
+- Auto-refresh every 10 seconds when using the preview server
 
-Run `book_preview` for a static HTML file, or `book_preview_server` to get a preview server at `http://localhost:3456`.
+Run `book_preview` for a static HTML file, or `book_preview_server` for the live
+server described below.
+
+### The live server
+
+`book_preview_server` writes `preview/server.js` into your project. It is a
+self-contained bundle — `node preview/server.js` runs with nothing installed
+beside it — and serves three routes:
+
+| Route | What it is |
+|---|---|
+| `/` | The manuscript, typeset for reading |
+| `/dashboard` | The dashboard, rebuilt on every request |
+| `/dashboard.json` | The same data, for anything that wants to consume it |
+
+Both pages are compiled from the chapter files **on every request**, so there is
+no export step and nothing goes stale: save a chapter and the next refresh shows
+it. The reader also includes chapters of every status, because someone watching
+the page while they write wants to see the draft they are writing — `/` is for
+writing, `book_export_markdown` is for publishing, and they filter differently on
+purpose.
+
+Both refresh via a `<meta http-equiv="refresh">` rather than a script, so nothing
+the server sends carries executable code. Files written by `book_preview` and
+`book_dashboard_export` carry no refresh at all — a saved page should not try to
+reload itself.
+
+```
+PREVIEW_PORT=8080 node preview/server.js          # default 3456
+PREVIEW_REFRESH_SECONDS=30 node preview/server.js  # default 10
+```
+
+The server finds the project as the parent of its own directory, so it works
+wherever the project is copied to. `BOOK_PROJECT_DIR` overrides that, which is
+what the container sets.
+
+> The server is built from `src/preview/server.ts` and bundled by esbuild, so
+> `npm run build` has to have been run in the installation before
+> `book_preview_server` can copy it. It used to be assembled at run time as an
+> array of JavaScript strings, which meant a second untyped copy of the markdown
+> renderer and the stylesheet, free to drift from the originals.
 
 ## Writing Workflows
 

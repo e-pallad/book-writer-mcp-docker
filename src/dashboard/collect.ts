@@ -443,7 +443,22 @@ export function collectDashboard(): DashboardData {
     chapters.map((chapter) => [chapter.id, readChapterFile(chapter.filename)])
   );
 
-  const totalWords = chapters.reduce((sum, c) => sum + c.wordCount, 0);
+  // Counted from the chapter files, not from the registry's cached figure.
+  // The presence map and the style findings are read from those files, so
+  // taking word counts from anywhere else lets two panels of the same
+  // dashboard describe different states — which is exactly what happened when
+  // a chapter was edited outside the tools and the live page showed the new
+  // prose while the totals did not move.
+  const liveWords = new Map(
+    chapters.map((chapter) => [chapter.id, countWords(texts.get(chapter.id) ?? "")])
+  );
+  const totalWords = chapters.reduce(
+    (sum, chapter) => sum + (liveWords.get(chapter.id) ?? 0),
+    0
+  );
+  const staleCounts = chapters.filter(
+    (chapter) => (liveWords.get(chapter.id) ?? 0) !== chapter.wordCount
+  );
   const byStatus: Record<string, number> = {};
   for (const chapter of chapters) {
     byStatus[chapter.status] = (byStatus[chapter.status] || 0) + 1;
@@ -470,7 +485,7 @@ export function collectDashboard(): DashboardData {
       title: chapter.title,
       status: chapter.status,
       order: chapter.order,
-      wordCount: chapter.wordCount,
+      wordCount: liveWords.get(chapter.id) ?? 0,
       updatedAt: chapter.updatedAt,
       daysSinceUpdate: daysBetween(chapter.updatedAt, now),
       revisionCount: snapshots.length,
@@ -495,6 +510,13 @@ export function collectDashboard(): DashboardData {
   }
 
   const notes: string[] = [];
+  if (staleCounts.length) {
+    notes.push(
+      `${staleCounts.length} chapter file(s) differ in length from what the registry records (${staleCounts
+        .map((c) => c.title)
+        .join(", ")}). The figures here are counted from the files. This is what an edit made outside the tools looks like; book_chapter_update re-syncs the registry.`
+    );
+  }
   if (!bible?.characters.length) {
     notes.push(
       "No characters in the story bible, so the presence map is empty. Add them with book_character_add."

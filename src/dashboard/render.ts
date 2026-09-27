@@ -508,7 +508,18 @@ function card(
 </section>`;
 }
 
-export function renderDashboard(data: DashboardData): string {
+export interface RenderOptions {
+  /**
+   * Reload every N seconds via a meta refresh. Set by the live server; left
+   * off for the exported file, which stays free of anything executable.
+   */
+  refreshSeconds?: number;
+}
+
+export function renderDashboard(
+  data: DashboardData,
+  options: RenderOptions = {}
+): string {
   const notes = data.notes.length
     ? `<section class="card card--notes"><ul>${data.notes
         .map((n) => `<li>${escapeHtml(n)}</li>`)
@@ -521,6 +532,11 @@ export function renderDashboard(data: DashboardData): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(data.overview.title)} — Dashboard</title>
+${
+  options.refreshSeconds
+    ? `<meta http-equiv="refresh" content="${options.refreshSeconds}" />`
+    : ""
+}
 <style>
 :root {
   color-scheme: light dark;

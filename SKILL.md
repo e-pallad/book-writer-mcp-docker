@@ -51,6 +51,8 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 1. `book_dashboard` — the whole state of the book at once: progress, who appears
    where, story order against chapter order, health findings, readiness
 2. `book_dashboard_export` — the same as a page the author can open and keep
+   (or `book_preview_server`, which serves it live at /dashboard alongside the
+   manuscript at / and updates as chapters are saved)
 3. Act on the health findings before drafting more: an open thread or a timeline
    contradiction is cheaper to fix now than after another ten chapters
 
