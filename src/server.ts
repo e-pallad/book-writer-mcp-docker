@@ -10,6 +10,7 @@ import { registerCoverTools } from "./tools/cover";
 import { registerAiDisclosureTools } from "./tools/ai-disclosure";
 import { registerAuthorTools } from "./tools/author";
 import { registerPreviewTools } from "./tools/preview";
+import { registerDashboardTools } from "./tools/dashboard";
 import { registerHistoryTools } from "./tools/history";
 import { registerTimelineTools } from "./tools/timeline";
 
@@ -35,6 +36,7 @@ export function createServer(): McpServer {
   registerAiDisclosureTools(server);
   registerAuthorTools(server);
   registerPreviewTools(server);
+  registerDashboardTools(server);
 
   return server;
 }

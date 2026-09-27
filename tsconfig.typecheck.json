@@ -10,6 +10,7 @@
     "src/storage/**/*",
     "src/auth/**/*",
     "src/http/**/*",
+    "src/dashboard/**/*",
     "src/tools/voice.ts",
     "src/tools/timeline-continuity.ts",
     "src/tools/ai-disclosure-policy.ts"

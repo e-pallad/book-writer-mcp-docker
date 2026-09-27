@@ -47,6 +47,13 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
    version if the revision went the wrong way; the text it replaces is saved
    first, so the revert can itself be reverted
 
+## Workflow for Taking Stock
+1. `book_dashboard` — the whole state of the book at once: progress, who appears
+   where, story order against chapter order, health findings, readiness
+2. `book_dashboard_export` — the same as a page the author can open and keep
+3. Act on the health findings before drafting more: an open thread or a timeline
+   contradiction is cheaper to fix now than after another ten chapters
+
 ## Workflow for Exporting
 1. `book_stats` — confirm completeness
 2. `book_plot_threads_list status=open` — warn author of unresolved threads
@@ -70,6 +77,8 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 - NEVER invent character details — always check story bible first
 - Run continuity check before marking any chapter "final"
 - Keep synopsis fields updated as chapters evolve
+- Run book_dashboard when the author asks how the book is going, rather than
+  assembling the answer from book_stats and a handful of list calls
 - Log dated events with book_timeline_add rather than burying them in a
   character's notes — book_continuity_check can only cross-reference what is on
   the timeline

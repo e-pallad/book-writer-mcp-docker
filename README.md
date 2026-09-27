@@ -247,6 +247,13 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_export_docx` | Export a formatted `.docx` with title page, TOC, and page numbers |
 | `book_export_epub` | Export a valid EPUB3 with a title page and generated table of contents |
 
+### Dashboard
+
+| Tool | What it does |
+|------|-------------|
+| `book_dashboard` | The state of the book as structured data |
+| `book_dashboard_export` | The same, as a self-contained HTML page |
+
 ### Preview
 
 | Tool | What it does |
@@ -533,6 +540,7 @@ your-book/
   manuscript.md         # Created by book_export_markdown
   manuscript.docx       # Created by book_export_docx
   manuscript.epub       # Created by book_export_epub
+  dashboard.html        # Created by book_dashboard_export
   preview.html          # Created by book_preview
   preview/
     server.js           # Created by book_preview_server
@@ -635,6 +643,62 @@ and stored uncompressed (readers identify the file by reading it at a fixed
 offset), that the required documents are present, and that chapter content is
 XHTML rather than HTML — `<br>` instead of `<br />` is a parse error that makes
 readers reject an otherwise fine book.
+
+## The Dashboard
+
+`book_dashboard` returns the state of the book as data; `book_dashboard_export`
+writes the same thing as a single HTML file with no scripts and nothing fetched
+at view time, so it opens straight from disk and prints.
+
+```
+book_dashboard
+book_dashboard sections=["health","readiness"]
+book_dashboard_export outputPath="./dashboard.html"
+```
+
+Seven panels, in the order they answer "how is this book doing?":
+
+| Panel | What it shows |
+|---|---|
+| **Progress** | Words against target, chapter states, reading time, how long since you last worked on it |
+| **Who appears where** | Characters down the side, chapters across, shaded by how often each is named |
+| **Story order vs chapter order** | Each logged event placed by the chapter it is told in against when it happens |
+| **Chapters** | Length, state, saved versions, and how much has changed since the oldest one |
+| **Words over time** | Total words reconstructed from the saved chapter versions |
+| **Manuscript health** | Open threads, timeline contradictions, absent characters, missing voice profiles, style-guide breaches, stale chapters |
+| **Publishing readiness** | What is still outstanding before KDP |
+
+The two worth opening it for are the first two of the middle group. **Who appears
+where** makes a character quietly leaving the book for eleven chapters obvious at
+a glance, which reading chapter-to-chapter never does. **Story order vs chapter
+order** draws the book's flashback structure: a straight diagonal means it is told
+in the order it happens, and every departure is deliberate — or a mistake, in
+which case the contradiction is marked in red with a label.
+
+### What it is honest about
+
+- **Words over time is a partial record.** It is reconstructed from saved chapter
+  versions, which only exist for content changes, cap at 20 per chapter, and
+  start when version tracking was added. The panel says so on its face rather
+  than presenting a trend that looks complete.
+- **Panels stay quiet when they have nothing to say.** A project that has never
+  logged a timeline event is not told that every chapter is missing one.
+- **A clean book reports "nothing flagged"** rather than an empty list you have
+  to interpret.
+
+### Colour
+
+The palette is not decorative and was not picked by eye. Magnitude — the
+presence map — uses one blue hue light-to-dark. Chapter status is an ordered
+scale, so it uses an ordinal ramp rather than four unrelated colours, and the
+ramps for both light and dark mode were checked with a validator (lightness
+monotonicity, step separation, contrast against each mode's own surface). Dark
+mode is its own set of steps, not an inverted light palette.
+
+Status colours (good / watch / serious / critical) are reserved for state and
+never reused as series colours, and they always travel with an icon and a word,
+so nothing is carried by colour alone. Every chart has a table view for the same
+reason.
 
 ## The Preview Reader
 
