@@ -12,6 +12,7 @@ import { registerAuthorTools } from "./tools/author";
 import { registerPreviewTools } from "./tools/preview";
 import { registerDashboardTools } from "./tools/dashboard";
 import { registerHistoryTools } from "./tools/history";
+import { registerChapterEditTools } from "./tools/chapter-edit";
 import { registerTimelineTools } from "./tools/timeline";
 
 // Builds a fully configured server instance. Shared by every transport so the
@@ -25,6 +26,7 @@ export function createServer(): McpServer {
   // Register all tool modules
   registerManuscriptTools(server);
   registerHistoryTools(server);
+  registerChapterEditTools(server);
   registerStoryBibleTools(server);
   registerTimelineTools(server);
   registerOutlineTools(server);

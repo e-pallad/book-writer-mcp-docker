@@ -185,7 +185,9 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_init` | Initialize a new book project |
 | `book_chapter_create` | Create a new chapter |
 | `book_chapter_read` | Read a chapter's content and metadata |
-| `book_chapter_update` | Update a chapter's content, title, synopsis or status |
+| `book_chapter_update` | Replace a chapter's whole content, or change title, synopsis or status |
+| `book_chapter_find` | Find text in a chapter with paragraph numbers and context |
+| `book_chapter_replace_text` | Replace one passage in a chapter, leaving the rest untouched |
 | `book_chapter_rename` | Rename a chapter (registry, file name, heading, outline) |
 | `book_chapter_delete` | Delete a chapter (file moves to `.book-mcp/trash/`) |
 | `book_chapter_list` | List all chapters with status and word counts |
@@ -406,6 +408,56 @@ something to say — a chapter with no logged events is never second-guessed.
 | Weekday contradiction | error | The chapter names a weekday the logged event does not. |
 | Time-of-day contradiction | warning | The chapter reads as morning where the event says night. Only raised when the draft names exactly one time of day — a chapter that spans dawn to dusk legitimately mentions several. |
 | Absent character | warning | The timeline puts a character in this chapter but the prose never names them. |
+
+## Editing Part of a Chapter
+
+`book_chapter_update` replaces the **whole** chapter. That is what it is for, but
+it makes a small correction expensive — the entire text has to be sent back — and
+it is unforgiving: passing a single paragraph to it replaces the chapter with
+that paragraph and the rest is gone.
+
+For a small edit, use the pair below instead. Nothing about `book_chapter_update`
+changes; this is a second route.
+
+```
+book_chapter_find chapterId="ch-003" query="Das Wasser war grau"
+book_chapter_replace_text chapterId="ch-003" \
+  oldText="Das Wasser war grau." \
+  newText="Das Wasser war schwarz."
+```
+
+**`book_chapter_find`** returns every occurrence with its paragraph number and
+surrounding context, without loading the chapter. Use it to locate a passage and
+to confirm a phrase is unique before replacing it.
+
+**`book_chapter_replace_text`** replaces one passage and leaves everything else
+byte-for-byte as it was.
+
+| | |
+|---|---|
+| Matching | Exact and character-for-character. No wildcards, no regular expressions. Both sides are folded to NFC first, so a `ü` typed on macOS matches the one stored on disk. |
+| Safety | Without `replaceAll`, `oldText` must occur **exactly once**. At zero or more than one match the call fails, names the count, and writes nothing. |
+| Counting | Non-overlapping, as a replacement behaves: `aa` occurs once in `aaa`, not twice. |
+| History | The previous text is filed before the write, so `book_chapter_revert` undoes the edit. |
+| Locking | The read, the match and the write run under the same lock `book_chapter_update` uses. |
+| Reply | Match count, word count before and after, and up to three short excerpts — capped, because a `replaceAll` over forty occurrences would otherwise cost more than reading the chapter. Never the chapter text. |
+
+`dryRun: true` reports what would change, including the reason an edit would be
+refused, and writes nothing.
+
+A replacement is spliced in literally: prose containing `$&` or `$1` survives
+intact, which it would not if this went through `String.replace`.
+
+### Reading only part of a chapter
+
+`book_chapter_read` takes optional `fromParagraph` and `toParagraph` (1-based,
+inclusive; paragraphs are separated by blank lines, and `book_chapter_find`
+reports the number of each match). With neither given it returns the whole
+chapter exactly as before.
+
+```
+book_chapter_read chapterId="ch-003" fromParagraph=12 toParagraph=14
+```
 
 ## Chapter Version History
 

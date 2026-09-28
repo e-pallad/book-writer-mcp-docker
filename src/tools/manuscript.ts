@@ -17,7 +17,7 @@ import {
 import { ChapterMeta, Registry } from "../storage/schema";
 import { countWords, estimateReadingTime } from "../utils/wordcount";
 import { BookMCPError } from "../utils/errors";
-import { normalizeForCompare, slugify } from "../utils/text";
+import { normalizeForCompare, slugify, splitParagraphs } from "../utils/text";
 import { snapshotIfChanged, trashHistory } from "../storage/history";
 
 // Chapters are addressed by id ("ch-002") everywhere, but an author thinks in
@@ -363,17 +363,76 @@ export function registerManuscriptTools(server: McpServer): void {
   // book_chapter_read
   server.tool(
     "book_chapter_read",
-    "Read a chapter's full content plus its metadata",
+    "Read a chapter's full content plus its metadata. Give fromParagraph and/or toParagraph to read only part of it — useful for a long chapter when only one passage matters.",
     {
       chapterId: z
         .string()
         .describe('Chapter ID (e.g. "ch-001") or chapter title'),
+      fromParagraph: z
+        .number()
+        .optional()
+        .describe(
+          "First paragraph to return, 1-based. Paragraphs are separated by blank lines, and book_chapter_find reports the number of each match. Omit for the start of the chapter."
+        ),
+      toParagraph: z
+        .number()
+        .optional()
+        .describe(
+          "Last paragraph to return, inclusive. Omit for the end of the chapter."
+        ),
     },
-    async ({ chapterId }) => {
+    async ({ chapterId, fromParagraph, toParagraph }) => {
       const registry = requireProject();
       const chapter = resolveChapter(registry, chapterId);
       const content = readChapterFile(chapter.filename);
-      return jsonResult({ meta: chapter, content });
+
+      // Unchanged when neither bound is given: the whole chapter, same shape
+      // as before.
+      if (fromParagraph === undefined && toParagraph === undefined) {
+        return jsonResult({ meta: chapter, content });
+      }
+
+      const paragraphs = splitParagraphs(content);
+      const total = paragraphs.length;
+      const from = fromParagraph ?? 1;
+      const to = toParagraph ?? total;
+
+      if (!Number.isInteger(from) || !Number.isInteger(to)) {
+        throw new BookMCPError("Paragraph numbers must be whole numbers.");
+      }
+      if (from < 1 || to < 1) {
+        throw new BookMCPError("Paragraph numbers start at 1.");
+      }
+      // Checked before from > to: with toParagraph left out it defaults to the
+      // last paragraph, so an out-of-range start would otherwise be reported
+      // as being "after" a bound the caller never passed.
+      if (from > total) {
+        throw new BookMCPError(
+          `Chapter "${chapter.id}" has ${total} paragraph(s), so paragraph ${from} does not exist.`
+        );
+      }
+      if (from > to) {
+        throw new BookMCPError(
+          `fromParagraph (${from}) is after toParagraph (${to}).`
+        );
+      }
+
+      const slice = paragraphs.slice(from - 1, Math.min(to, total));
+      const text = content.slice(
+        slice[0].start,
+        slice[slice.length - 1].end
+      );
+
+      return jsonResult({
+        meta: chapter,
+        content: text,
+        paragraphRange: {
+          from,
+          to: Math.min(to, total),
+          totalParagraphs: total,
+          truncated: from > 1 || to < total,
+        },
+      });
     }
   );
 

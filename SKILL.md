@@ -36,6 +36,13 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
   left dangling is reported back
 - `book_chapter_reorder` — move a chapter to a different position
 
+## Workflow for a Small Correction
+1. `book_chapter_find` — locate the passage and confirm the phrase is unique
+2. `book_chapter_replace_text` — replace just that passage; the rest of the
+   chapter is untouched and the previous version is filed automatically
+3. `book_chapter_read fromParagraph=... toParagraph=...` — re-read only the
+   part that changed, rather than the whole chapter
+
 ## Workflow for Revising a Chapter
 1. `book_chapter_history_list` — see what earlier versions exist and how far
    each one is from the current text
@@ -95,5 +102,10 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
   policy was last checked
 - NEVER hand-copy a chapter somewhere to keep a backup before rewriting it —
   book_chapter_update already saves the previous version
+- NEVER pass a single paragraph to book_chapter_update: it replaces the WHOLE
+  chapter, so everything else is lost. For a small edit use
+  book_chapter_replace_text, which changes only the passage it matches
+- Prefer book_chapter_find + book_chapter_replace_text over re-sending a whole
+  chapter; reserve book_chapter_update content=... for a genuine full rewrite
 - Offer book_chapter_revert instead of rewriting from memory when the author
   dislikes a revision; the earlier text is still on disk
