@@ -5,10 +5,14 @@ import { registerOutlineTools } from "./tools/outline";
 import { registerStyleGuideTools } from "./tools/styleguide";
 import { registerContinuityTools } from "./tools/continuity";
 import { registerExportTools } from "./tools/export";
+import { registerEpubTools } from "./tools/epub";
 import { registerCoverTools } from "./tools/cover";
+import { registerAiDisclosureTools } from "./tools/ai-disclosure";
 import { registerAuthorTools } from "./tools/author";
 import { registerPreviewTools } from "./tools/preview";
+import { registerDashboardTools } from "./tools/dashboard";
 import { registerHistoryTools } from "./tools/history";
+import { registerChapterEditTools } from "./tools/chapter-edit";
 import { registerTimelineTools } from "./tools/timeline";
 
 // Builds a fully configured server instance. Shared by every transport so the
@@ -22,15 +26,19 @@ export function createServer(): McpServer {
   // Register all tool modules
   registerManuscriptTools(server);
   registerHistoryTools(server);
+  registerChapterEditTools(server);
   registerStoryBibleTools(server);
   registerTimelineTools(server);
   registerOutlineTools(server);
   registerStyleGuideTools(server);
   registerContinuityTools(server);
   registerExportTools(server);
+  registerEpubTools(server);
   registerCoverTools(server);
+  registerAiDisclosureTools(server);
   registerAuthorTools(server);
   registerPreviewTools(server);
+  registerDashboardTools(server);
 
   return server;
 }

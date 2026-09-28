@@ -222,3 +222,17 @@ export interface OutlineChapter {
   synopsis: string;
   scenes?: string[];
 }
+
+export interface AiDisclosure {
+  /** How AI was used for each content type Amazon asks about. */
+  text: "none" | "ai_generated" | "ai_assisted";
+  images: "none" | "ai_generated" | "ai_assisted";
+  translations: "none" | "ai_generated" | "ai_assisted";
+  notes: string;
+  /** Whether any of the above obliges a declaration to KDP. */
+  disclosureRequired: boolean;
+  recordedAt: string;
+  /** Which reading of Amazon's policy this was recorded against. */
+  policyVersion: string;
+  policyVerifiedOn: string;
+}

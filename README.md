@@ -185,7 +185,9 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_init` | Initialize a new book project |
 | `book_chapter_create` | Create a new chapter |
 | `book_chapter_read` | Read a chapter's content and metadata |
-| `book_chapter_update` | Update a chapter's content, title, synopsis or status |
+| `book_chapter_update` | Replace a chapter's whole content, or change title, synopsis or status |
+| `book_chapter_find` | Find text in a chapter with paragraph numbers and context |
+| `book_chapter_replace_text` | Replace one passage in a chapter, leaving the rest untouched |
 | `book_chapter_rename` | Rename a chapter (registry, file name, heading, outline) |
 | `book_chapter_delete` | Delete a chapter (file moves to `.book-mcp/trash/`) |
 | `book_chapter_list` | List all chapters with status and word counts |
@@ -245,6 +247,14 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 |------|-------------|
 | `book_export_markdown` | Compile all chapters into a single Markdown file |
 | `book_export_docx` | Export a formatted `.docx` with title page, TOC, and page numbers |
+| `book_export_epub` | Export a valid EPUB3 with a title page and generated table of contents |
+
+### Dashboard
+
+| Tool | What it does |
+|------|-------------|
+| `book_dashboard` | The state of the book as structured data |
+| `book_dashboard_export` | The same, as a self-contained HTML page |
 
 ### Preview
 
@@ -262,6 +272,8 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_cover_get_spec` | Retrieve the cover spec |
 | `book_cover_generate_prompt` | Generate an AI image prompt from the cover spec |
 | `book_cover_checklist` | KDP publishing readiness checklist |
+| `book_ai_disclosure_generate` | Work out what KDP needs declared about AI use, and record it |
+| `book_ai_disclosure_get` | Read back the recorded AI disclosure |
 
 ### Author Profile
 
@@ -397,6 +409,56 @@ something to say — a chapter with no logged events is never second-guessed.
 | Time-of-day contradiction | warning | The chapter reads as morning where the event says night. Only raised when the draft names exactly one time of day — a chapter that spans dawn to dusk legitimately mentions several. |
 | Absent character | warning | The timeline puts a character in this chapter but the prose never names them. |
 
+## Editing Part of a Chapter
+
+`book_chapter_update` replaces the **whole** chapter. That is what it is for, but
+it makes a small correction expensive — the entire text has to be sent back — and
+it is unforgiving: passing a single paragraph to it replaces the chapter with
+that paragraph and the rest is gone.
+
+For a small edit, use the pair below instead. Nothing about `book_chapter_update`
+changes; this is a second route.
+
+```
+book_chapter_find chapterId="ch-003" query="Das Wasser war grau"
+book_chapter_replace_text chapterId="ch-003" \
+  oldText="Das Wasser war grau." \
+  newText="Das Wasser war schwarz."
+```
+
+**`book_chapter_find`** returns every occurrence with its paragraph number and
+surrounding context, without loading the chapter. Use it to locate a passage and
+to confirm a phrase is unique before replacing it.
+
+**`book_chapter_replace_text`** replaces one passage and leaves everything else
+byte-for-byte as it was.
+
+| | |
+|---|---|
+| Matching | Exact and character-for-character. No wildcards, no regular expressions. Both sides are folded to NFC first, so a `ü` typed on macOS matches the one stored on disk. |
+| Safety | Without `replaceAll`, `oldText` must occur **exactly once**. At zero or more than one match the call fails, names the count, and writes nothing. |
+| Counting | Non-overlapping, as a replacement behaves: `aa` occurs once in `aaa`, not twice. |
+| History | The previous text is filed before the write, so `book_chapter_revert` undoes the edit. |
+| Locking | The read, the match and the write run under the same lock `book_chapter_update` uses. |
+| Reply | Match count, word count before and after, and up to three short excerpts — capped, because a `replaceAll` over forty occurrences would otherwise cost more than reading the chapter. Never the chapter text. |
+
+`dryRun: true` reports what would change, including the reason an edit would be
+refused, and writes nothing.
+
+A replacement is spliced in literally: prose containing `$&` or `$1` survives
+intact, which it would not if this went through `String.replace`.
+
+### Reading only part of a chapter
+
+`book_chapter_read` takes optional `fromParagraph` and `toParagraph` (1-based,
+inclusive; paragraphs are separated by blank lines, and `book_chapter_find`
+reports the number of each match). With neither given it returns the whole
+chapter exactly as before.
+
+```
+book_chapter_read chapterId="ch-003" fromParagraph=12 toParagraph=14
+```
+
 ## Chapter Version History
 
 Every `book_chapter_update` that changes the prose files the previous text away
@@ -516,6 +578,7 @@ your-book/
     registry.json       # Book metadata, chapter list, word counts
     story-bible.json    # Characters, settings, plot threads
     timeline.json       # Story events in chronological order
+    ai-disclosure.json  # Recorded AI content declaration for KDP
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
@@ -528,10 +591,166 @@ your-book/
     ...
   manuscript.md         # Created by book_export_markdown
   manuscript.docx       # Created by book_export_docx
+  manuscript.epub       # Created by book_export_epub
+  dashboard.html        # Created by book_dashboard_export
   preview.html          # Created by book_preview
   preview/
     server.js           # Created by book_preview_server
 ```
+
+## AI Content Disclosure
+
+Amazon asks publishers to declare AI-generated content. The distinction that
+matters, and the one most often got wrong, is **who created the content** — not
+how much you edited it afterwards:
+
+| | Definition | Declare to KDP? |
+|---|---|---|
+| **AI-generated** | An AI tool created the text, images or translation from your prompts. Editing it afterwards, however heavily, does not change this. | **Yes** |
+| **AI-assisted** | You created it; AI only brainstormed, outlined, edited, refined or error-checked. | **No** |
+
+```
+book_ai_disclosure_generate text="ai_assisted" images="ai_generated"
+```
+
+Each content type — text, images (cover *and* interior artwork), translations —
+is classified separately, because KDP asks about them separately. The response
+tells you exactly what to answer in the publishing form, records the decision in
+`.book-mcp/ai-disclosure.json`, and `book_cover_checklist` stops reminding you.
+
+Two things worth being clear about, because tools in this space often are not:
+
+- **The declaration is a form answer, not text in your book.** Amazon does not
+  want a disclosure printed in the front matter, and putting one there is not
+  what makes you compliant. A reader-facing note is offered anyway, explicitly
+  marked as optional, for authors who want to tell readers or who are selling
+  through a retailer or into a jurisdiction that asks for something different.
+- **AI-assisted work needs no declaration at all.** If you drafted the book and
+  used AI to tighten it, there is nothing to declare.
+
+You must declare again whenever you edit and republish, not just on first
+publication.
+
+### On the wording staying current
+
+The policy is held in one dated block in `src/tools/ai-disclosure-policy.ts`
+carrying its source URL and the date it was last checked, and **every response
+repeats both**. This server has no network access at run time by design, so it
+cannot re-read Amazon's page for you — and a compliance answer that quietly
+served a stale cache would be worse than one that shows its age. Treat the
+verification date as the claim: if it is old, open the linked page before you
+publish.
+
+A disclosure recorded against an older reading of the policy than the server now
+carries is flagged when you read it back, so a project that predates a policy
+update does not look settled when it is not.
+
+To refresh: re-read the [KDP content guidelines](https://kdp.amazon.com/en_US/help/topic/G200672390),
+update that file, and bump `POLICY_VERIFIED_ON`.
+
+## EPUB Export
+
+`book_export_epub` compiles the manuscript into an EPUB3 file: a title page, a
+table of contents generated from the chapter titles, and one XHTML document per
+chapter.
+
+```
+book_export_epub
+book_export_epub language="de" identifier="urn:isbn:9780000000000"
+book_export_epub outputPath="./drafts/wip.epub" includeChapters=["ch-001","ch-002"]
+```
+
+Chapter selection matches `book_export_markdown`: an explicit list if you give
+one, otherwise every `final` and `review` chapter, otherwise everything. A
+chapter that is empty on disk is skipped and reported rather than shipped as a
+blank page.
+
+The author comes from `author-profile.json` when a profile exists, falling back
+to the name `book_init` was given; the response says which was used. `language`
+is a BCP 47 tag and defaults to `en` — set it, because reading systems use it
+for hyphenation and text-to-speech. `identifier` takes an ISBN if you have one
+(`urn:isbn:...`); a random UUID is generated if you don't, which is fine for a
+draft but should be a real identifier before publishing.
+
+No new dependency was added for this: `jszip` was already in the tree under
+`docx`, and is now declared directly since the exporter uses it.
+
+### Validity
+
+The output is checked against [epubcheck](https://github.com/w3c/epubcheck), the
+reference implementation of the specification, and passes with no errors or
+warnings under EPUB 3.3 rules. epubcheck is a 30 MB Java tool, so it is not
+vendored; the test that uses it marks itself skipped when it is absent rather
+than reporting a pass it did not earn. To run it:
+
+```bash
+curl -sSLo /tmp/epubcheck.zip \
+  https://github.com/w3c/epubcheck/releases/download/v5.1.0/epubcheck-5.1.0.zip
+unzip -q /tmp/epubcheck.zip -d /tmp
+EPUBCHECK_JAR=/tmp/epubcheck-5.1.0/epubcheck.jar npm test
+```
+
+The structural checks run either way: that `mimetype` is the first archive entry
+and stored uncompressed (readers identify the file by reading it at a fixed
+offset), that the required documents are present, and that chapter content is
+XHTML rather than HTML — `<br>` instead of `<br />` is a parse error that makes
+readers reject an otherwise fine book.
+
+## The Dashboard
+
+`book_dashboard` returns the state of the book as data; `book_dashboard_export`
+writes the same thing as a single HTML file with no scripts and nothing fetched
+at view time, so it opens straight from disk and prints.
+
+```
+book_dashboard
+book_dashboard sections=["health","readiness"]
+book_dashboard_export outputPath="./dashboard.html"
+```
+
+Seven panels, in the order they answer "how is this book doing?":
+
+| Panel | What it shows |
+|---|---|
+| **Progress** | Words against target, chapter states, reading time, how long since you last worked on it |
+| **Who appears where** | Characters down the side, chapters across, shaded by how often each is named |
+| **Story order vs chapter order** | Each logged event placed by the chapter it is told in against when it happens |
+| **Chapters** | Length, state, saved versions, and how much has changed since the oldest one |
+| **Words over time** | Total words reconstructed from the saved chapter versions |
+| **Manuscript health** | Open threads, timeline contradictions, absent characters, missing voice profiles, style-guide breaches, stale chapters |
+| **Publishing readiness** | What is still outstanding before KDP |
+
+The two worth opening it for are the first two of the middle group. **Who appears
+where** makes a character quietly leaving the book for eleven chapters obvious at
+a glance, which reading chapter-to-chapter never does. **Story order vs chapter
+order** draws the book's flashback structure: a straight diagonal means it is told
+in the order it happens, and every departure is deliberate — or a mistake, in
+which case the contradiction is marked in red with a label.
+
+### What it is honest about
+
+- **Words over time is a partial record.** It is reconstructed from saved chapter
+  versions, which only exist for content changes, cap at 20 per chapter, and
+  start when version tracking was added. The panel says so on its face rather
+  than presenting a trend that looks complete.
+- **Panels stay quiet when they have nothing to say.** A project that has never
+  logged a timeline event is not told that every chapter is missing one.
+- **A clean book reports "nothing flagged"** rather than an empty list you have
+  to interpret.
+
+### Colour
+
+The palette is not decorative and was not picked by eye. Magnitude — the
+presence map — uses one blue hue light-to-dark. Chapter status is an ordered
+scale, so it uses an ordinal ramp rather than four unrelated colours, and the
+ramps for both light and dark mode were checked with a validator (lightness
+monotonicity, step separation, contrast against each mode's own surface). Dark
+mode is its own set of steps, not an inverted light palette.
+
+Status colours (good / watch / serious / critical) are reserved for state and
+never reused as series colours, and they always travel with an icon and a word,
+so nothing is carried by colour alone. Every chart has a table view for the same
+reason.
 
 ## The Preview Reader
 
@@ -543,9 +762,49 @@ The built-in preview renders your manuscript as a beautifully typeset book page:
 - Cream paper background with subtle shadow
 - Fixed word count badge
 - Responsive design for reading on any device
-- Auto-refresh every 10 seconds when using the preview server (re-run `book_export_markdown` after chapter edits to update content)
+- Auto-refresh every 10 seconds when using the preview server
 
-Run `book_preview` for a static HTML file, or `book_preview_server` to get a preview server at `http://localhost:3456`.
+Run `book_preview` for a static HTML file, or `book_preview_server` for the live
+server described below.
+
+### The live server
+
+`book_preview_server` writes `preview/server.js` into your project. It is a
+self-contained bundle — `node preview/server.js` runs with nothing installed
+beside it — and serves three routes:
+
+| Route | What it is |
+|---|---|
+| `/` | The manuscript, typeset for reading |
+| `/dashboard` | The dashboard, rebuilt on every request |
+| `/dashboard.json` | The same data, for anything that wants to consume it |
+
+Both pages are compiled from the chapter files **on every request**, so there is
+no export step and nothing goes stale: save a chapter and the next refresh shows
+it. The reader also includes chapters of every status, because someone watching
+the page while they write wants to see the draft they are writing — `/` is for
+writing, `book_export_markdown` is for publishing, and they filter differently on
+purpose.
+
+Both refresh via a `<meta http-equiv="refresh">` rather than a script, so nothing
+the server sends carries executable code. Files written by `book_preview` and
+`book_dashboard_export` carry no refresh at all — a saved page should not try to
+reload itself.
+
+```
+PREVIEW_PORT=8080 node preview/server.js          # default 3456
+PREVIEW_REFRESH_SECONDS=30 node preview/server.js  # default 10
+```
+
+The server finds the project as the parent of its own directory, so it works
+wherever the project is copied to. `BOOK_PROJECT_DIR` overrides that, which is
+what the container sets.
+
+> The server is built from `src/preview/server.ts` and bundled by esbuild, so
+> `npm run build` has to have been run in the installation before
+> `book_preview_server` can copy it. It used to be assembled at run time as an
+> array of JavaScript strings, which meant a second untyped copy of the markdown
+> renderer and the stylesheet, free to drift from the originals.
 
 ## Writing Workflows
 
@@ -572,6 +831,37 @@ The AI structures your knowledge into chapters, maintains a consistent professio
 > "My manuscript is done. Help me get it ready for Kindle Direct Publishing."
 
 Export to `.docx` with proper formatting, generate KDP-compliant cover specs with exact dimensions, run the publishing checklist, and preview the final result.
+
+## Development
+
+```bash
+npm install
+npm test          # builds, then runs the suite
+npm run typecheck
+npm run build     # esbuild bundles for both transports
+```
+
+### Type checking
+
+`npm run typecheck` covers `src/utils`, `src/storage`, `src/auth`, `src/http`
+and the pure-logic tool modules — everything where the logic lives. It runs in
+about a second.
+
+It deliberately leaves out the tool-registration modules, and the reason is
+worth knowing before you try to "fix" it: **a full-project `tsc` does not
+complete.** Every `server.tool()` call with a zod shape triggers
+`TS2589: Type instantiation is excessively deep and possibly infinite`. One
+such file takes ~90 seconds on its own; across all thirteen of them the
+compiler exhausts even a 13 GB heap and dies. This comes from the MCP SDK's
+`ZodRawShape` inference rather than from anything here, it is unaffected by the
+zod version (3.25 behaves the same as 3.22), and it predates this config — the
+project has never been fully type-checkable, which went unnoticed because the
+build uses esbuild, and esbuild strips types without checking them.
+
+Those modules are covered instead by esbuild (imports and syntax) and by the
+test suite, which exercises every tool through its real handler and zod schema.
+If the SDK's inference is fixed upstream, widen the `include` in
+`tsconfig.typecheck.json` and delete this section.
 
 ## Requirements
 

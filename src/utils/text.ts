@@ -159,3 +159,65 @@ export function decodeHtmlEntities(value: string): string {
       .replace(/&([a-z]+);/gi, (match, name) => NAMED_ENTITIES[name] ?? match)
   );
 }
+
+// A paragraph is a run of text between blank lines — the same unit the preview
+// renders as one <p>, so an author counting paragraphs on the page and a tool
+// counting them here arrive at the same number. A lone line break inside a
+// paragraph does not start a new one.
+const PARAGRAPH_BREAK = /\n(?:[ \t\r]*\n)+/;
+
+export interface Paragraph {
+  /** 1-based, as an author would count them. */
+  index: number;
+  text: string;
+  /** Offsets into the original string, so a caller can slice precisely. */
+  start: number;
+  end: number;
+}
+
+/**
+ * Splits text into paragraphs, keeping their offsets.
+ *
+ * Empty trailing segments are kept rather than dropped: numbering has to stay
+ * stable between a find and the replace that follows it, and filtering would
+ * shift every number after a stretch of blank lines.
+ */
+export function splitParagraphs(text: string): Paragraph[] {
+  const paragraphs: Paragraph[] = [];
+  const pattern = new RegExp(PARAGRAPH_BREAK.source, "g");
+  let cursor = 0;
+  let index = 1;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    paragraphs.push({
+      index: index++,
+      text: text.slice(cursor, match.index),
+      start: cursor,
+      end: match.index,
+    });
+    cursor = match.index + match[0].length;
+  }
+
+  paragraphs.push({
+    index,
+    text: text.slice(cursor),
+    start: cursor,
+    end: text.length,
+  });
+  return paragraphs;
+}
+
+/** Which paragraph a character offset falls in, 1-based. */
+export function paragraphNumberAt(text: string, offset: number): number {
+  const pattern = new RegExp(PARAGRAPH_BREAK.source, "g");
+  let number = 1;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    // A break the offset sits inside still belongs to the paragraph before it.
+    if (match.index + match[0].length > offset) break;
+    number++;
+  }
+  return number;
+}
