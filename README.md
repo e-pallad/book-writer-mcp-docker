@@ -281,6 +281,8 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_cover_get_spec` | Retrieve the cover spec |
 | `book_cover_generate_prompt` | Generate an AI image prompt from the cover spec |
 | `book_cover_checklist` | KDP publishing readiness checklist |
+| `book_metadata_set` | Subtitle, series, description, keywords, categories, ISBNs, publisher, date, copyright, contributors |
+| `book_metadata_get` | The metadata, its copyright line, what a store would reject, and what is missing |
 | `book_ai_disclosure_generate` | Work out what KDP needs declared about AI use, and record it |
 | `book_ai_disclosure_get` | Read back the recorded AI disclosure |
 
@@ -760,6 +762,7 @@ your-book/
     timeline.json       # Story events in chronological order
     ai-disclosure.json  # Recorded AI content declaration for KDP
     writing-log.json    # Words added and cut per day
+    metadata.json       # Publishing metadata: subtitle, series, ISBNs, keywords…
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
@@ -778,6 +781,39 @@ your-book/
   preview/
     server.js           # Created by book_preview_server
 ```
+
+## Publishing Metadata
+
+A store needs more than a title: a subtitle, the series, a description, search
+keywords, categories, an ISBN per edition, the publisher, the date, the
+copyright line, the editor or translator. `book_metadata_set` keeps them in
+`.book-mcp/metadata.json`; every field is optional, replaces what was there, and
+an empty value clears it.
+
+```
+book_metadata_set subtitle="Ein Kriminalroman" seriesName="Hafen-Krimis" seriesNumber=2 \
+  description="…" keywords=["Hafenkrimi", "Hamburg"] categories=["FIC022000"] \
+  isbnEbook="978-3-16-148410-0" publisher="Kleinverlag" publicationDate="2027-03-01"
+```
+
+What KDP would reject is refused, and the call as a whole with it: an eighth
+keyword, a keyword over 50 characters, a fourth category, a description over
+4000 characters, title and subtitle together over 200, an ISBN whose check digit
+does not add up (usually a typo), two editions sharing an ISBN. ISBNs are stored
+as bare digits, however they were typed. `book_metadata_get` repeats any such
+problem in a hand-edited file, and lists what is still missing.
+
+**The description is the blurb, and it has one home.** The EPUB's description
+and the cover spec's back-cover blurb both read it. A blurb given to
+`book_cover_create_spec` while there is no description becomes the description.
+
+The EPUB takes all of it: the subtitle as a refined `title-type`, the series as
+`belongs-to-collection` with its position, contributors with their MARC
+relator roles, publisher, date, rights and categories — and it still passes
+epubcheck. Its identifier is the e-book ISBN when there is one; otherwise a UUID
+kept in `metadata.json`, so a re-exported draft is the same book to a reader's
+library rather than a second copy. The title pages of the EPUB and the `.docx`
+show the subtitle, and the dashboard's readiness panel lists what is missing.
 
 ## AI Content Disclosure
 

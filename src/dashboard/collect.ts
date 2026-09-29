@@ -7,8 +7,10 @@ import {
   getAuthorProfile,
   getAiDisclosure,
   getWritingLog,
+  getMetadata,
   readChapterFile,
 } from "../storage/filestore";
+import { missingMetadata } from "../publishing/metadata";
 import { dayKey, projectTimeZone } from "../storage/writing-log";
 import { totalsByDay } from "../storage/progress";
 import { listSnapshots, readSnapshot } from "../storage/history";
@@ -448,12 +450,36 @@ function buildReadiness(registry: Registry): ReadinessItem[] {
     detail: spec ? "On file." : "Run book_cover_create_spec.",
   });
 
+  const published = getMetadata();
+  const description = published?.description ?? spec?.backCover?.blurb;
   items.push({
-    item: "Back cover blurb",
-    state: spec?.backCover?.blurb ? "ready" : "optional",
-    detail: spec?.backCover?.blurb
+    item: "Description / blurb",
+    state: description ? "ready" : "needed",
+    detail: description
       ? "Written."
-      : "Needed for paperback and hardcover.",
+      : "The store page and the back cover need it. Set it with book_metadata_set.",
+  });
+
+  const missingStore = missingMetadata(published).filter((m) => m.field !== "description");
+  items.push({
+    item: "Keywords and categories",
+    state: missingStore.length ? "needed" : "ready",
+    detail: missingStore.length
+      ? `Missing: ${missingStore.map((m) => m.field).join(", ")}. Set them with book_metadata_set.`
+      : `${published?.keywords?.length ?? 0} keyword(s), ${published?.categories?.length ?? 0} categor${
+          published?.categories?.length === 1 ? "y" : "ies"
+        }.`,
+  });
+
+  items.push({
+    item: "ISBN",
+    state: published?.isbn && Object.keys(published.isbn).length ? "ready" : "optional",
+    detail:
+      published?.isbn && Object.keys(published.isbn).length
+        ? Object.entries(published.isbn)
+            .map(([edition, isbn]) => `${edition}: ${isbn}`)
+            .join(", ")
+        : "Not needed for a KDP e-book; a paperback needs one (KDP can assign one free).",
   });
 
   items.push({

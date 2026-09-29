@@ -2,7 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as fs from "fs";
 import * as path from "path";
-import { getRegistry, readChapterFile } from "../storage/filestore";
+import { getMetadata, getRegistry, readChapterFile } from "../storage/filestore";
 import { BookMCPError } from "../utils/errors";
 import { countWords } from "../utils/wordcount";
 import { describeSelection, selectChapters } from "../export/select";
@@ -122,6 +122,7 @@ export function registerExportTools(server: McpServer): void {
       const labels = labelsFor(language);
       const buffer = await buildDocx({
         title: registry.title,
+        subtitle: getMetadata()?.subtitle,
         author: registry.author,
         language,
         contentsLabel: labels.contents,

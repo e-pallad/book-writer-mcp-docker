@@ -95,10 +95,12 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
    if the book has one, `identifier` to its ISBN
 
 ## Workflow for Publishing to KDP
-1. `book_cover_checklist` — see what is still missing
-2. `book_ai_disclosure_generate` — classify AI use per content type and record
+1. `book_metadata_set` — description (the blurb), keywords, categories, ISBNs,
+   subtitle, series; `book_metadata_get` shows what is still missing
+2. `book_cover_checklist` — see what is still missing
+3. `book_ai_disclosure_generate` — classify AI use per content type and record
    it; the answer it gives is for the KDP publishing form, not for the book
-3. `book_export_epub` — build the file readers will get
+4. `book_export_epub` — build the file readers will get
 
 ## Important Rules
 - Set the project language (`book_init language=...` or `book_project_update

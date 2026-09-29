@@ -297,3 +297,38 @@ export interface WritingDay {
   /** How many changes were made. */
   changes: number;
 }
+
+/** What a store, a catalogue and an EPUB reader need to know about the book. */
+export interface PublishingMetadata {
+  subtitle?: string;
+  series?: { name: string; number?: number };
+  /**
+   * The book's description — the blurb on the back cover and the text on the
+   * store page. The one copy: the cover spec and the EPUB read it from here.
+   */
+  description?: string;
+  /** Search keywords or phrases; KDP takes seven. */
+  keywords?: string[];
+  /** Store categories or BISAC/Thema codes; KDP takes three. */
+  categories?: string[];
+  isbn?: { ebook?: string; paperback?: string; hardcover?: string };
+  publisher?: string;
+  /** YYYY-MM-DD. */
+  publicationDate?: string;
+  copyright?: { holder?: string; year?: number };
+  contributors?: { name: string; role: ContributorRole }[];
+  /**
+   * A stable identifier for a book with no ISBN yet, so re-exported drafts
+   * are recognised as the same book by a reader's library.
+   */
+  uuid?: string;
+  updatedAt: string;
+}
+
+export type ContributorRole =
+  | "editor"
+  | "translator"
+  | "illustrator"
+  | "cover_designer"
+  | "foreword"
+  | "other";

@@ -7,9 +7,12 @@ import JSZip from "jszip";
 import {
   getRegistry,
   getAuthorProfile,
+  getMetadata,
   readChapterFile,
+  updateMetadata,
 } from "../storage/filestore";
-import { ChapterMeta, Registry } from "../storage/schema";
+import { ContributorRole } from "../storage/schema";
+import { MARC_RELATORS, rightsStatement } from "../publishing/metadata";
 import { BookMCPError } from "../utils/errors";
 import { countWords } from "../utils/wordcount";
 import { escapeHtml, escapeXml, markdownToHtml } from "../utils/markdown";
@@ -68,6 +71,8 @@ hr {
 }
 .titlepage { text-align: center; margin-top: 25%; }
 .titlepage h1 { text-align: center; margin-bottom: 0.5em; }
+.titlepage .subtitle { font-size: 1.2em; margin: 0 0 1.5em; text-indent: 0; }
+.titlepage .series { font-variant: small-caps; margin: 0 0 1em; text-indent: 0; }
 .titlepage .author { font-size: 1.1em; margin: 0; text-indent: 0; }
 .titlepage .genre { font-style: italic; opacity: 0.75; text-indent: 0; }
 blockquote { margin: 1em 2em; }
@@ -85,6 +90,50 @@ interface BookMetadata {
   modified: string;
   genre: string;
   description?: string;
+  subtitle?: string;
+  series?: { name: string; number?: number };
+  publisher?: string;
+  date?: string;
+  rights?: string;
+  subjects: string[];
+  contributors: { name: string; role: ContributorRole }[];
+}
+
+// The metadata block beyond the required identifier, title and language. EPUB
+// 3 refines a title with its type, which is how a reading system tells a
+// subtitle from a second title, and places a book in a series with
+// belongs-to-collection.
+function optionalMetadata(meta: BookMetadata): string[] {
+  const lines: string[] = [];
+  if (meta.subtitle) {
+    lines.push(
+      '<meta refines="#title" property="title-type">main</meta>',
+      `<dc:title id="subtitle">${escapeHtml(meta.subtitle)}</dc:title>`,
+      '<meta refines="#subtitle" property="title-type">subtitle</meta>'
+    );
+  }
+  if (meta.series) {
+    lines.push(
+      `<meta property="belongs-to-collection" id="series">${escapeHtml(meta.series.name)}</meta>`,
+      '<meta refines="#series" property="collection-type">series</meta>'
+    );
+    if (meta.series.number !== undefined) {
+      lines.push(`<meta refines="#series" property="group-position">${meta.series.number}</meta>`);
+    }
+  }
+  meta.contributors.forEach((contributor, index) => {
+    const id = `contributor-${index + 1}`;
+    lines.push(
+      `<dc:contributor id="${id}">${escapeHtml(contributor.name)}</dc:contributor>`,
+      `<meta refines="#${id}" property="role" scheme="marc:relators">${MARC_RELATORS[contributor.role]}</meta>`
+    );
+  });
+  if (meta.publisher) lines.push(`<dc:publisher>${escapeHtml(meta.publisher)}</dc:publisher>`);
+  if (meta.date) lines.push(`<dc:date>${escapeHtml(meta.date)}</dc:date>`);
+  if (meta.rights) lines.push(`<dc:rights>${escapeHtml(meta.rights)}</dc:rights>`);
+  for (const subject of meta.subjects) lines.push(`<dc:subject>${escapeHtml(subject)}</dc:subject>`);
+  if (meta.description) lines.push(`<dc:description>${escapeHtml(meta.description)}</dc:description>`);
+  return lines;
 }
 
 function buildPackageDocument(
@@ -114,16 +163,14 @@ function buildPackageDocument(
   )}">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="book-id">${escapeHtml(meta.identifier)}</dc:identifier>
-    <dc:title>${escapeHtml(meta.title)}</dc:title>
+    <dc:title id="title">${escapeHtml(meta.title)}</dc:title>
     <dc:language>${escapeHtml(meta.language)}</dc:language>
     <dc:creator id="author">${escapeHtml(meta.author)}</dc:creator>
     <meta refines="#author" property="role" scheme="marc:relators">aut</meta>
     <meta property="dcterms:modified">${meta.modified}</meta>
-${meta.genre ? `    <dc:subject>${escapeHtml(meta.genre)}</dc:subject>\n` : ""}${
-    meta.description
-      ? `    <dc:description>${escapeHtml(meta.description)}</dc:description>\n`
-      : ""
-  }  </metadata>
+${optionalMetadata(meta)
+  .map((line) => `    ${line}\n`)
+  .join("")}  </metadata>
   <manifest>
     ${manifest.join("\n    ")}
   </manifest>
@@ -192,7 +239,13 @@ function buildTitlePage(meta: BookMetadata): string {
     meta.title,
     `<section epub:type="titlepage" class="titlepage">
     <h1>${escapeHtml(meta.title)}</h1>
-    <p class="author">${escapeHtml(meta.author)}</p>
+${meta.subtitle ? `    <p class="subtitle">${escapeHtml(meta.subtitle)}</p>\n` : ""}${
+      meta.series
+        ? `    <p class="series">${escapeHtml(meta.series.name)}${
+            meta.series.number !== undefined ? ` ${meta.series.number}` : ""
+          }</p>\n`
+        : ""
+    }    <p class="author">${escapeHtml(meta.author)}</p>
 ${meta.genre ? `    <p class="genre">${escapeHtml(meta.genre)}</p>\n` : ""}  </section>`,
     meta.language
   );
@@ -228,7 +281,7 @@ export function registerEpubTools(server: McpServer): void {
       description: z
         .string()
         .optional()
-        .describe("Optional blurb stored as the book's description metadata"),
+        .describe("Blurb stored as the book's description (default: the description from book_metadata_set)"),
     },
     async ({ outputPath, includeChapters, language: languageOverride, identifier, description }) => {
       const registry = getRegistry();
@@ -255,14 +308,43 @@ export function registerEpubTools(server: McpServer): void {
       const profile = getAuthorProfile();
       const author = profile?.name?.trim() || registry.author;
 
+      // The identifier: one passed in, else the e-book's ISBN, else a UUID
+      // kept in metadata.json — stable, so a reader's library recognises a
+      // re-exported draft as the same book instead of adding a second copy.
+      let published = getMetadata();
+      let identifierSource: string;
+      let bookId: string;
+      if (identifier?.trim()) {
+        bookId = identifier.trim();
+        identifierSource = "the identifier parameter";
+      } else if (published?.isbn?.ebook) {
+        bookId = `urn:isbn:${published.isbn.ebook}`;
+        identifierSource = "the e-book ISBN in metadata.json";
+      } else {
+        published = await updateMetadata((m) => {
+          if (m.uuid) return false;
+          m.uuid = randomUUID();
+        });
+        bookId = `urn:uuid:${published.uuid}`;
+        identifierSource =
+          "a stable UUID kept in metadata.json (set an e-book ISBN with book_metadata_set before publishing)";
+      }
+
       const meta: BookMetadata = {
         title: registry.title,
         author,
         language,
-        identifier: identifier?.trim() || `urn:uuid:${randomUUID()}`,
+        identifier: bookId,
         modified: epubTimestamp(new Date()),
         genre: registry.genre,
-        description,
+        description: description ?? published?.description,
+        subtitle: published?.subtitle,
+        series: published?.series,
+        publisher: published?.publisher,
+        date: published?.publicationDate,
+        rights: published ? rightsStatement(published, registry) : undefined,
+        subjects: [registry.genre, ...(published?.categories ?? [])].filter(Boolean),
+        contributors: published?.contributors ?? [],
       };
 
       const warnings: string[] = [];
@@ -364,6 +446,9 @@ export function registerEpubTools(server: McpServer): void {
                     : "registry.json",
                   language: meta.language,
                   identifier: meta.identifier,
+                  identifierSource,
+                  ...(meta.subtitle ? { subtitle: meta.subtitle } : {}),
+                  ...(meta.series ? { series: meta.series } : {}),
                   modified: meta.modified,
                 },
                 tableOfContents: entries.map((e, i) => ({

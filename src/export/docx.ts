@@ -25,6 +25,7 @@ export interface DocxChapter {
 
 export interface DocxOptions {
   title: string;
+  subtitle?: string;
   author: string;
   chapters: DocxChapter[];
   fontFamily: string;
@@ -163,6 +164,15 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
       spacing: { before: 4000 },
       children: [new TextRun({ text: options.title, bold: true, size: halfPoints + 16 })],
     }),
+    ...(options.subtitle
+      ? [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 240 },
+            children: [new TextRun({ text: options.subtitle, size: halfPoints + 6 })],
+          }),
+        ]
+      : []),
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 400 },

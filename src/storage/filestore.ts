@@ -11,6 +11,7 @@ import {
   Timeline,
   AiDisclosure,
   WritingLog,
+  PublishingMetadata,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
@@ -259,6 +260,28 @@ export function getWritingLog(): WritingLog | null {
 
 export function saveWritingLog(log: WritingLog): void {
   writeJSON(mcpPath("writing-log.json"), log);
+}
+
+// Publishing metadata
+export function getMetadata(): PublishingMetadata | null {
+  return readJSON<PublishingMetadata>(mcpPath("metadata.json"));
+}
+
+export function saveMetadata(metadata: PublishingMetadata): void {
+  metadata.updatedAt = new Date().toISOString();
+  writeJSON(mcpPath("metadata.json"), metadata);
+}
+
+/** Amends the metadata, creating it on first use. */
+export function updateMetadata(
+  mutate: (metadata: PublishingMetadata) => unknown | Promise<unknown>
+): Promise<PublishingMetadata> {
+  return withFileLock(mcpPath("metadata.json"), async () => {
+    const metadata = getMetadata() ?? { updatedAt: new Date().toISOString() };
+    const outcome = await mutate(metadata);
+    if (outcome !== ABORT) saveMetadata(metadata);
+    return metadata;
+  });
 }
 
 // AI content disclosure
@@ -510,5 +533,6 @@ export function getProjectPaths() {
     timelinePath: mcpPath(TIMELINE_FILE),
     aiDisclosurePath: mcpPath("ai-disclosure.json"),
     writingLogPath: mcpPath("writing-log.json"),
+    metadataPath: mcpPath("metadata.json"),
   };
 }
