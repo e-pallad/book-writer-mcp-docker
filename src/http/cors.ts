@@ -18,7 +18,7 @@ import { NextFunction, Request, Response } from "express";
 //     WWW-Authenticate has to be readable or the client cannot find the
 //     resource_metadata URL that starts the OAuth flow.
 //
-// See ISSUES.md for the captured request/response pairs.
+// See https://github.com/e-pallad/book-writer-mcp-docker/issues/33 for the captured request/response pairs.
 
 // Headers a Streamable HTTP client sends. Anything not listed here is rejected
 // by the browser at preflight time, before the request leaves the machine.
