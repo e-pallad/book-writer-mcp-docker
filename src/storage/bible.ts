@@ -13,15 +13,23 @@ function known(items: { id: string }[], label: (item: never) => string): string 
 }
 
 export function findCharacter(bible: StoryBible, ref: string): Character | undefined {
-  const needle = normalizeForCompare(ref);
-  return (
+  const needle = normalizeForCompare(ref.trim());
+  const exact =
     bible.characters.find((c) => c.id === ref) ??
     bible.characters.find(
       (c) =>
         normalizeForCompare(c.name) === needle ||
         c.aliases.some((a) => normalizeForCompare(a) === needle)
+    );
+  if (exact) return exact;
+
+  // "Mara" for "Mara Vance" — but only when no one else answers to it too.
+  const byPart = bible.characters.filter((c) =>
+    [c.name, ...c.aliases].some((n) =>
+      normalizeForCompare(n).split(/\s+/).includes(needle)
     )
   );
+  return byPart.length === 1 ? byPart[0] : undefined;
 }
 
 export function resolveCharacter(bible: StoryBible, ref: string): Character {

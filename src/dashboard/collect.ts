@@ -22,6 +22,7 @@ import { countWords, estimateReadingTime, WORD_COUNT_VERSION } from "../utils/wo
 import { wholeWordRegExp } from "../utils/text";
 import { BookMCPError } from "../utils/errors";
 import { lastCarried } from "../tools/continuity-rules";
+import { listScenes } from "../scenes/list";
 import {
   ChapterRow,
   DashboardData,
@@ -644,6 +645,32 @@ export function collectDashboard(): DashboardData {
     );
   }
 
+  // Scenes and whose eyes they are seen through.
+  const listedScenes = listScenes(chapters, (c) => texts.get(c.id) ?? "");
+  const povWords = new Map<string, { scenes: number; words: number }>();
+  let sceneTotal = 0;
+  let described = 0;
+  let sceneWords = 0;
+  for (const { scenes: chapterScenes } of listedScenes.chapters) {
+    for (const { scene, meta } of chapterScenes) {
+      sceneTotal++;
+      sceneWords += scene.words;
+      if (meta) described++;
+      const name = meta?.pov
+        ? bible?.characters.find((c) => c.id === meta.pov)?.name ?? meta.pov
+        : "(not set)";
+      const entry = povWords.get(name) ?? { scenes: 0, words: 0 };
+      entry.scenes++;
+      entry.words += scene.words;
+      povWords.set(name, entry);
+    }
+  }
+  if (listedScenes.lost.length) {
+    notes.push(
+      `${listedScenes.lost.length} scene note(s) lost their scene — its opening was rewritten or cut. book_scene_list shows them.`
+    );
+  }
+
   return {
     generatedAt: now.toISOString(),
     overview: {
@@ -665,6 +692,18 @@ export function collectDashboard(): DashboardData {
     presence,
     timeline,
     velocity,
+    scenes: {
+      total: sceneTotal,
+      described,
+      pointOfView: [...povWords]
+        .map(([character, entry]) => ({
+          character,
+          ...entry,
+          share: sceneWords ? Math.round((entry.words / sceneWords) * 100) : 0,
+        }))
+        .sort((a, b) => b.words - a.words),
+      lost: listedScenes.lost.length,
+    },
     health: buildHealth(registry, chapters, texts, presence, timeline, now),
     readiness: buildReadiness(registry),
     notes,

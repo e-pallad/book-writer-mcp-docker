@@ -407,3 +407,35 @@ export interface Note {
 export interface Notes {
   notes: Note[];
 }
+
+/**
+ * What the author knows about one scene. Scenes are not stored — they are the
+ * stretches of a chapter between scene breaks — so their metadata is anchored
+ * to the scene's opening words and matched up again on every read.
+ */
+export interface SceneMeta {
+  chapterId: string;
+  /** The scene's first words, whitespace collapsed. */
+  anchor: string;
+  /** The scene's number when last set, to tell apart scenes that open alike. */
+  indexHint: number;
+  /** Character id of the point-of-view character. */
+  pov?: string;
+  setting?: string;
+  /** Setting id, when the setting is one the story bible knows. */
+  settingId?: string;
+  /** When it happens, in the story's own terms. */
+  time?: string;
+  /** What the point-of-view character wants in the scene. */
+  goal?: string;
+  /** What stands in the way. */
+  conflict?: string;
+  /** How it ends for them: the turn that leads into the next scene. */
+  outcome?: string;
+  summary?: string;
+  updatedAt: string;
+}
+
+export interface Scenes {
+  scenes: SceneMeta[];
+}

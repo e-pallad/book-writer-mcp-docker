@@ -19,6 +19,7 @@ import { registerBookEditTools } from "./tools/book-edit";
 import { registerMetadataTools } from "./tools/metadata";
 import { registerMatterTools } from "./tools/matter";
 import { registerNoteTools } from "./tools/notes";
+import { registerSceneTools } from "./tools/scenes";
 
 // Builds a fully configured server instance. Shared by every transport so the
 // stdio and HTTP entry points always expose the same tools.
@@ -34,6 +35,7 @@ export function createServer(): McpServer {
   registerHistoryTools(server);
   registerChapterEditTools(server);
   registerNoteTools(server);
+  registerSceneTools(server);
   registerBookEditTools(server);
   registerStoryBibleTools(server);
   registerTimelineTools(server);

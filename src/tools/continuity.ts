@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getRegistry,
   getStoryBible,
+  getStyleGuide,
   getTimeline,
   readChapterFile,
 } from "../storage/filestore";
@@ -10,7 +11,9 @@ import { checkTimeline } from "./timeline-continuity";
 import { BookMCPError } from "../utils/errors";
 import { resolveChapter } from "../storage/chapters";
 import { languageNote, projectLanguage } from "../lang";
-import { checkCharacters, checkThreads } from "./continuity-rules";
+import { checkCharacters, checkScenePov, checkThreads } from "./continuity-rules";
+import { classifyPov } from "./style-rules";
+import { listScenes } from "../scenes/list";
 
 interface ContinuityFlag {
   type: "character" | "timeline" | "setting" | "plot_thread";
@@ -63,6 +66,13 @@ export function registerContinuityTools(server: McpServer): void {
       const characterCheck = checkCharacters(content, bible, language.rules);
       flags.push(...characterCheck.flags);
       skipped.push(...characterCheck.skipped);
+
+      // Each scene against its noted point of view, in a third-person book.
+      const guide = getStyleGuide();
+      if (guide && classifyPov(guide.pov) === "third") {
+        const [listed] = listScenes([chapter], () => content).chapters;
+        flags.push(...checkScenePov(listed.scenes, bible));
+      }
 
       // Open plot threads left resting too long.
       flags.push(

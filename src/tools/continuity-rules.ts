@@ -1,7 +1,7 @@
 // The story-bible half of book_continuity_check, apart from the tool so it can
 // be type-checked and tested on its own.
 
-import { ChapterMeta, Character, PlotThread, StoryBible } from "../storage/schema";
+import { ChapterMeta, Character, PlotThread, SceneMeta, StoryBible } from "../storage/schema";
 import { LanguageRules } from "../lang/types";
 import { escapeRegExp, normalizeForCompare, wholeWordRegExp } from "../utils/text";
 import { speakerTagsIn } from "./voice";
@@ -186,6 +186,46 @@ export function checkThreads(
         severity: "warning",
         description: `Open plot thread "${thread.title}" (opened in ${thread.openedIn}) was last carried in ${last.id} ("${last.title}"), ${gap} chapters before this one.`,
         suggestion: `Weave "${thread.title}" in, resolve it, or mark it abandoned with book_plot_thread_update. If this chapter carries it without naming it, record that with book_plot_thread_touch, or give the thread keywords the prose does use.`,
+      });
+    }
+  }
+  return flags;
+}
+
+// ---------------------------------------------------------------------------
+// Scenes
+
+/**
+ * A scene told from a character's point of view that never names them. In a
+ * third-person book the POV character is named in their own scene; when they
+ * are not, either the POV noted for the scene is wrong or the scene drifted
+ * into someone else's head. Not checked for first person, where the narrator
+ * is "ich".
+ */
+export function checkScenePov(
+  scenes: { scene: { index: number; text: string }; meta?: SceneMeta }[],
+  bible: StoryBible
+): CharacterFlag[] {
+  const flags: CharacterFlag[] = [];
+  for (const { scene, meta } of scenes) {
+    if (!meta?.pov) continue;
+    const character = bible.characters.find((c) => c.id === meta.pov);
+    if (!character) {
+      flags.push({
+        type: "character",
+        severity: "warning",
+        description: `Scene ${scene.index} is noted as told by "${meta.pov}", who is no longer in the story bible.`,
+        suggestion: "Set the scene's point of view again with book_scene_set.",
+      });
+      continue;
+    }
+    const text = scene.text.normalize("NFC");
+    if (!namesOf(character).some((name) => wholeWordRegExp(name).test(text))) {
+      flags.push({
+        type: "character",
+        severity: "warning",
+        description: `Scene ${scene.index} is told from ${character.name}'s point of view, but never names them.`,
+        suggestion: `Check that the scene stays in ${character.name}'s head — or correct its point of view with book_scene_set.`,
       });
     }
   }

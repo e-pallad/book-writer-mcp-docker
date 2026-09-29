@@ -14,6 +14,7 @@ import {
   PublishingMetadata,
   Matter,
   Notes,
+  Scenes,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
@@ -328,6 +329,23 @@ export function updateNotes(
   });
 }
 
+// Scene metadata
+export function getScenes(): Scenes | null {
+  return readJSON<Scenes>(mcpPath("scenes.json"));
+}
+
+/** Amends the scene metadata, creating the file on first use. */
+export function updateScenes(
+  mutate: (scenes: Scenes) => unknown | Promise<unknown>
+): Promise<Scenes> {
+  return withFileLock(mcpPath("scenes.json"), async () => {
+    const scenes = getScenes() ?? { scenes: [] };
+    const outcome = await mutate(scenes);
+    if (outcome !== ABORT) writeJSON(mcpPath("scenes.json"), scenes);
+    return scenes;
+  });
+}
+
 // AI content disclosure
 export function getAiDisclosure(): AiDisclosure | null {
   return readJSON<AiDisclosure>(mcpPath("ai-disclosure.json"));
@@ -580,5 +598,6 @@ export function getProjectPaths() {
     metadataPath: mcpPath("metadata.json"),
     matterPath: mcpPath("matter.json"),
     notesPath: mcpPath("notes.json"),
+    scenesPath: mcpPath("scenes.json"),
   };
 }

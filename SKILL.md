@@ -27,6 +27,13 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 9. `book_style_check` — verify voice consistency; pass characterId to check
    a character's dialogue against their own voice profile as well
 
+## Workflow for Scenes
+- Separate scenes in a chapter with a scene break (`* * *`)
+- `book_scene_set chapterId=... scene=N pov=... goal=... conflict=... outcome=...`
+  after drafting a scene; `book_scene_list` to review a chapter's scenes
+- A scene with no conflict is worth questioning; lost scene notes mean the
+  scene's opening changed — set them again
+
 ## Workflow for Plot Threads
 - `book_plot_thread_add` with `keywords` the prose will actually use — the title
   rarely appears in the text

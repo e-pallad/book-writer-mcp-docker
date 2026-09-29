@@ -18,6 +18,7 @@ export function registerDashboardTools(server: McpServer): void {
             "presence",
             "timeline",
             "velocity",
+            "scenes",
             "health",
             "readiness",
           ])

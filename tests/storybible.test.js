@@ -273,3 +273,13 @@ test("themes stored as bare strings by hand are read as themes", async (t) => {
   const { themes } = await callJson(api, "book_theme_list", {});
   assert.deepEqual(themes, [{ name: "Heimat", description: "" }]);
 });
+
+test("a character is found by a unique part of their name, never by a shared one", async (t) => {
+  const { api } = await newProject(t);
+  await callJson(api, "book_character_add", { name: "Mara Vance", role: "protagonist", description: "d" });
+  await callJson(api, "book_character_add", { name: "Tom Vance", role: "minor", description: "d" });
+
+  const mara = await callJson(api, "book_character_get", { nameOrId: "Mara" });
+  assert.equal(mara.name, "Mara Vance");
+  await assert.rejects(callJson(api, "book_character_get", { nameOrId: "Vance" }), /not found/);
+});

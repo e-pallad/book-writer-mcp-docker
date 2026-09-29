@@ -251,6 +251,13 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_style_list_influences` | List author influences |
 | `book_style_remove_influence` | Remove an author influence |
 
+### Scenes
+
+| Tool | What it does |
+|------|-------------|
+| `book_scene_list` | A chapter's (or the book's) scenes, with what is noted about each, and the point-of-view share |
+| `book_scene_set` | Note a scene's point of view, setting, time, goal, conflict, outcome and summary |
+
 ### Reader and Editor Notes
 
 | Tool | What it does |
@@ -656,6 +663,33 @@ chapter exactly as before.
 book_chapter_read chapterId="ch-003" fromParagraph=12 toParagraph=14
 ```
 
+## Scenes
+
+Classic drafting thinks in scenes, not chapters: one point of view, one place,
+one time — a goal, a conflict in its way, an outcome that turns into the next
+scene. A chapter's scenes are the stretches between its scene breaks, so there
+is nothing to maintain: `book_scene_list` reads them off the text, with their
+paragraph range, length and opening words.
+
+```
+book_scene_list chapterId="Der Kai"
+book_scene_set chapterId="Der Kai" scene=2 pov="Kell" setting="Schuppen" \
+               goal="Das Geld auftreiben" conflict="Der Wirt will es heute" outcome="Er beschließt zu stehlen"
+```
+
+What is noted about a scene lives in `.book-mcp/scenes.json`, **anchored to the
+scene's opening words**: insert a scene in front of it and its notes move with
+it; rewrite its opening and the notes are reported as lost rather than pinned
+to whichever scene now has its number. `pov` is a character from the story
+bible (a unique first name will do), `setting` one of its settings or free text.
+
+Across the book, `book_scene_list` and the dashboard show how the words are
+shared between point-of-view characters, and scenes noted without a conflict
+are counted — a scene without one is often a scene that can go. In a
+third-person book, `book_continuity_check` flags a scene whose point-of-view
+character is never named in it: either the noted POV is wrong, or the scene
+drifted into someone else's head.
+
 ## Placeholders While Drafting
 
 The rule of a first draft is to keep going. Where a name, a fact or a date is
@@ -833,6 +867,7 @@ your-book/
     metadata.json       # Publishing metadata: subtitle, series, ISBNs, keywords…
     matter.json         # Front and back matter
     notes.json          # Notes from test readers and the editor
+    scenes.json         # What is noted about each scene
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
