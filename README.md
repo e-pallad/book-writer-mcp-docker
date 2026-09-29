@@ -176,6 +176,22 @@ Plain HTTP is not accepted, so terminate TLS at the proxy or tunnel. Treat the b
 
 The hostname stays stable across restarts and rebuilds, so you only configure the connector once.
 
+#### Deployment and auto-update
+
+Every pull request runs the typecheck, the tests and a Docker build in GitHub Actions (`.github/workflows/ci.yml`). A merge to `main` also publishes the image to `ghcr.io/e-pallad/book-writer-mcp-docker`, tagged `latest` and `sha-<commit>`.
+
+`docker-compose.yml` names that image, so a server only needs the compose file and `.env`:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+`docker compose up --build` still builds from source for local work.
+
+To follow `main` automatically, run `deploy/truenas/auto-update.sh` from cron (as root, e.g. every 5 minutes). It pulls the image and does nothing when the running container is already on it. Otherwise it snapshots the ZFS dataset holding `./data`, recreates the container and waits for the health check. A release that doesn't become healthy is rolled back to the previous image, remembered in `.bad-image` so it isn't retried, and reported on stderr, which cron mails. The log is `/var/log/book-writer-mcp-update.log`.
+
+To pin a version or roll back by hand, set `BOOK_MCP_TAG=sha-<commit>` in `.env` and run `docker compose up -d`. Remove it to follow `latest` again.
+
 ## Tools Reference
 
 ### Concept & Exposé

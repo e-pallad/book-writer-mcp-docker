@@ -1,7 +1,9 @@
 services:
   book-writer-mcp:
     build: .
-    image: book-writer-mcp
+    # Published by CI on every merge to main; deploy/truenas/auto-update.sh
+    # pulls it. Set BOOK_MCP_TAG=sha-<commit> in .env to pin a version.
+    image: ghcr.io/e-pallad/book-writer-mcp-docker:${BOOK_MCP_TAG:-latest}
     container_name: book-writer-mcp
     restart: unless-stopped
     env_file:

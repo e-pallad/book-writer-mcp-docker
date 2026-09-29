@@ -6,3 +6,5 @@ CLAUDE.md
 .env
 data/
 dist-tsc/
+.bad-image
+.auto-update.lock
