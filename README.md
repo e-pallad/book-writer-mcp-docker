@@ -199,7 +199,7 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_chapter_history_list` | List a chapter's saved versions with a per-version diff summary |
 | `book_chapter_revert` | Restore a saved version (the text it replaces is saved first) |
 | `book_chapter_diff` | Unified diff between a saved version and the current text |
-| `book_stats` | Manuscript-wide statistics |
+| `book_stats` | Manuscript-wide statistics, including the extent in Normseiten |
 
 ### Story Bible (world-building & continuity)
 
@@ -264,7 +264,7 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | Tool | What it does |
 |------|-------------|
 | `book_export_markdown` | Compile all chapters into a single Markdown file |
-| `book_export_docx` | Export a formatted `.docx`: title page, TOC, each chapter on a new page, markdown turned into Word formatting |
+| `book_export_docx` | Export a `.docx` — as a book (`preset="book"`), a German **Normseite** manuscript or the **Standard Manuscript Format** |
 | `book_export_epub` | Export a valid EPUB3 with a title page and generated table of contents |
 
 ### Dashboard
@@ -944,6 +944,38 @@ chapter starts on a new page, and — the convention in printed prose — the fi
 paragraph after a heading, a scene break or a quote starts flush while the rest
 are indented. The heading styles are the body font in black, overriding Word's
 built-in blue sans-serif ones.
+
+### Submission manuscripts: Normseite and Standard Manuscript Format
+
+A manuscript sent to an agency or a publisher is not laid out like a book.
+`book_export_docx preset=` produces the two formats the trade expects:
+
+| | `normseite` | `standard_manuscript` |
+|---|---|---|
+| Where | German-language publishing | English-language publishing |
+| Page | A4, 2.5 cm margins, the right one set so a line holds **exactly 60 characters** | US Letter, 1-inch margins |
+| Type | Courier New 12 pt, a line pitch that fits **exactly 30 lines** | 12 pt Times New Roman or Courier New, double-spaced |
+| Running head | `Author · Title / page` | `Surname / TITLE / page` |
+| Cover sheet | Contact block; `ca. 312 Normseiten` top right | Contact block; `about 80,000 words` top right |
+| Chapters | New page, four lines down | New page, a third of the way down, centred title |
+| Scene break | `*` | `#`, and `END` after the last line |
+
+Every paragraph is indented, and in the Normseite every spacing is a whole
+number of lines and widow control is off, so no page holds more or less than
+thirty. The geometry is not left to taste: the tests assert that the text width
+is sixty Courier characters and that thirty lines fit where thirty-one do not.
+Font, size and spacing parameters are ignored for these presets (the reply
+says so), front and back matter are left out — they are the publisher's to
+set — and `contact` fills the cover sheet.
+
+```
+book_export_docx preset="normseite" contact=["Anna Autorin", "Hafenstraße 1, 20457 Hamburg", "anna@example.org"]
+```
+
+`book_stats` reports the extent the way publishers quote it: `normPages`,
+counted by laying the text out exactly as the Normseite export does — each
+chapter on a new page, words wrapped at sixty characters, a scene break three
+lines — and `charactersWithSpaces`.
 
 ## EPUB Export
 

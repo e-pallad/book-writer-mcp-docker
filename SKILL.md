@@ -99,7 +99,9 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 ## Workflow for Exporting
 1. `book_stats` — confirm completeness
 2. `book_plot_threads_list status=open` — warn author of unresolved threads
-3. `book_export_docx` — compile final manuscript for editors and print
+3. `book_export_docx` — compile final manuscript for editors and print; for a
+   submission to an agency or publisher use `preset="normseite"` (German) or
+   `preset="standard_manuscript"` (English) with the author's `contact` lines
 4. `book_export_epub` — compile for e-readers and KDP; set `language` and,
    if the book has one, `identifier` to its ISBN
 

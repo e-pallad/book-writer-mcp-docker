@@ -20,7 +20,9 @@ import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare, slugify, splitParagraphs } from "../utils/text";
 import { snapshotIfChanged, trashHistory } from "../storage/history";
 import { recordWords, saveChapterContent } from "../storage/writing-log";
-import { requireProject, resolveChapter } from "../storage/chapters";
+import { chaptersInOrder, requireProject, resolveChapter } from "../storage/chapters";
+import { assembleBook } from "../export/assemble";
+import { measureExtent } from "../export/normseite";
 import { isValidLanguageTag, rulesFor, supportedLanguages } from "../lang";
 
 export { resolveChapter, requireProject } from "../storage/chapters";
@@ -749,9 +751,17 @@ export function registerManuscriptTools(server: McpServer): void {
         byStatus[c.status] = (byStatus[c.status] || 0) + 1;
       }
 
+      // The extent as a publisher quotes it: in Normseiten (30 lines of 60
+      // characters) and in characters, counted over the whole book.
+      const extent = measureExtent(
+        assembleBook(registry, chaptersInOrder(registry), { includeMatter: false })
+      );
+
       return jsonResult({
         totalWordCount,
         targetWordCount: registry.targetWordCount,
+        normPages: extent.normPages,
+        charactersWithSpaces: extent.characters,
         percentComplete: Math.round(
           (totalWordCount / registry.targetWordCount) * 100
         ),
