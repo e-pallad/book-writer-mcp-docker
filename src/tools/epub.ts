@@ -13,29 +13,7 @@ import { ChapterMeta, Registry } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
 import { countWords } from "../utils/wordcount";
 import { escapeHtml, escapeXml, markdownToHtml } from "../utils/markdown";
-
-// The same selection book_export_markdown makes: an explicit list, otherwise
-// everything ready for readers, otherwise everything there is.
-function selectChapters(registry: Registry, includeChapters?: string[]): ChapterMeta[] {
-  const ordered = [...registry.chapters].sort((a, b) => a.order - b.order);
-
-  if (includeChapters) {
-    const unknown = includeChapters.filter(
-      (id) => !registry.chapters.some((c) => c.id === id)
-    );
-    if (unknown.length > 0) {
-      throw new BookMCPError(
-        `Unknown chapter IDs: ${unknown.join(", ")}. Available: ${
-          registry.chapters.map((c) => c.id).join(", ") || "none"
-        }`
-      );
-    }
-    return ordered.filter((c) => includeChapters.includes(c.id));
-  }
-
-  const ready = ordered.filter((c) => c.status === "final" || c.status === "review");
-  return ready.length > 0 ? ready : ordered;
-}
+import { selectChapters } from "../export/select";
 
 // EPUB3 requires dcterms:modified to the second, with no fractional part.
 function epubTimestamp(date: Date): string {
@@ -231,7 +209,7 @@ export function registerEpubTools(server: McpServer): void {
         .array(z.string())
         .optional()
         .describe(
-          "Chapter IDs to include (default: all final + review chapters, or every chapter when none are marked ready)"
+          "Chapter IDs or titles to include (default: all final + review chapters, or every chapter when none are marked ready)"
         ),
       language: z
         .string()

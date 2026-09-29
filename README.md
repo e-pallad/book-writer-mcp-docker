@@ -246,7 +246,7 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | Tool | What it does |
 |------|-------------|
 | `book_export_markdown` | Compile all chapters into a single Markdown file |
-| `book_export_docx` | Export a formatted `.docx` with title page, TOC, and page numbers |
+| `book_export_docx` | Export a formatted `.docx`: title page, TOC, each chapter on a new page, markdown turned into Word formatting |
 | `book_export_epub` | Export a valid EPUB3 with a title page and generated table of contents |
 
 ### Dashboard
@@ -667,6 +667,30 @@ update does not look settled when it is not.
 
 To refresh: re-read the [KDP content guidelines](https://kdp.amazon.com/en_US/help/topic/G200672390),
 update that file, and bump `POLICY_VERIFIED_ON`.
+
+## Which Chapters an Export Contains
+
+`book_export_markdown`, `book_export_docx`, `book_export_epub` and `book_preview`
+all choose chapters the same way (`src/export/select.ts`):
+
+1. `includeChapters` (ids or titles) when you give it — an unknown entry is an
+   error, not a silent omission;
+2. otherwise every chapter marked `review` or `final`;
+3. otherwise, while nothing is marked ready yet, every chapter.
+
+The reply's `selection` field says which rule applied and how many drafts were
+left out. The live preview server is the one exception: it shows every chapter,
+because someone watching it while they write wants to see the draft.
+
+## DOCX Export
+
+`book_export_docx` writes the chapter markdown as real Word formatting rather
+than as text: `*italic*` becomes an italic run, `## Section` a *Heading 2*,
+a scene break a centred `*  *  *`, a `> quote` an indented paragraph. Every
+chapter starts on a new page, and — the convention in printed prose — the first
+paragraph after a heading, a scene break or a quote starts flush while the rest
+are indented. The heading styles are the body font in black, overriding Word's
+built-in blue sans-serif ones.
 
 ## EPUB Export
 
