@@ -132,7 +132,7 @@ To connect: **Settings → Connectors → Add custom connector**, enter `https:/
 
 claude.ai's web client calls `/mcp` with `fetch()` from `https://claude.ai`, which makes every call cross-origin. The browser therefore sends a `OPTIONS` preflight before the real request, and **a preflight never carries an `Authorization` header** — the browser generates it, not the client code. A server that authenticates `OPTIONS` answers `401`, the browser aborts, and the authenticated request is never sent.
 
-That is exactly the failure reported in [#79](https://github.com/anthropics/claude-ai-mcp/issues/79), [#155](https://github.com/anthropics/claude-ai-mcp/issues/155) and [#162](https://github.com/anthropics/claude-ai-mcp/issues/162): the connector authorizes, and then every call fails with no token in the server log. The tokenless request in the log is the preflight. This server used to have that bug; it does not any more. The full investigation, with redacted request/response pairs, is in [ISSUES.md](ISSUES.md).
+That is exactly the failure reported in [#79](https://github.com/anthropics/claude-ai-mcp/issues/79), [#155](https://github.com/anthropics/claude-ai-mcp/issues/155) and [#162](https://github.com/anthropics/claude-ai-mcp/issues/162): the connector authorizes, and then every call fails with no token in the server log. The tokenless request in the log is the preflight. This server used to have that bug; it does not any more. The full investigation, with redacted request/response pairs, is in [#33](https://github.com/e-pallad/book-writer-mcp-docker/issues/33).
 
 The server now answers preflights before authentication runs, and exposes the headers a browser client has to read back:
 
@@ -151,7 +151,7 @@ MCP_ALLOWED_ORIGINS=https://claude.ai     # comma-separated; unset means any ori
 MCP_DEBUG_AUTH=1
 ```
 
-Logs one line per request, before authentication runs, so rejected requests show up too. Credentials are never logged — the token is reduced to its length and an 8-character SHA-256 prefix, so the output is safe to paste into a bug report. [ISSUES.md](ISSUES.md) explains how to read it.
+Logs one line per request, before authentication runs, so rejected requests show up too. Credentials are never logged — the token is reduced to its length and an 8-character SHA-256 prefix, so the output is safe to paste into a bug report. [#33](https://github.com/e-pallad/book-writer-mcp-docker/issues/33) explains how to read it.
 
 ### Making it reachable
 
