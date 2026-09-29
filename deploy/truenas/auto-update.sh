@@ -32,6 +32,7 @@ HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 KEEP_SNAPSHOTS="${KEEP_SNAPSHOTS:-10}"
 SNAP_PREFIX="pre-book-mcp-"
 PREVIOUS_TAG="$SERVICE:previous"
+IMAGE_SOURCE="${IMAGE_SOURCE:-https://github.com/e-pallad/book-writer-mcp-docker}"
 
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; }
 fail() { log "ERROR $*"; printf '%s: %s\n' "$SERVICE auto-update" "$*" >&2; exit 1; }
@@ -48,7 +49,11 @@ compose() { docker compose "$@"; }
 image_ref="$(compose config --images "$SERVICE" | head -n1)"
 [ -n "$image_ref" ] || fail "no image configured for service $SERVICE"
 
-compose pull --quiet "$SERVICE" >> "$LOG" 2>&1 || fail "pull of $image_ref failed"
+# Pull output is only logged when it fails; this runs every few minutes
+if ! pull_out="$(compose pull --quiet "$SERVICE" 2>&1)"; then
+  printf '%s\n' "$pull_out" >> "$LOG"
+  fail "pull of $image_ref failed"
+fi
 
 new_id="$(docker image inspect --format '{{.Id}}' "$image_ref")"
 container_id="$(compose ps -q "$SERVICE")"
@@ -101,7 +106,8 @@ wait_healthy() {
 compose up -d --no-build "$SERVICE" >> "$LOG" 2>&1 || true
 if wait_healthy; then
   log "ok $SERVICE is healthy on revision ${new_rev:-unknown}"
-  docker image prune -f >> "$LOG" 2>&1 || true
+  # Only this project's superseded images; other stacks' images are not ours to prune
+  docker image prune -f --filter "label=org.opencontainers.image.source=$IMAGE_SOURCE" > /dev/null 2>&1 || true
   exit 0
 fi
 
