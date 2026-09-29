@@ -14,6 +14,7 @@ import { diffStats } from "../utils/diff";
 import { countWords, estimateReadingTime } from "../utils/wordcount";
 import { wholeWordRegExp } from "../utils/text";
 import { BookMCPError } from "../utils/errors";
+import { lastCarried } from "../tools/continuity-rules";
 import {
   ChapterRow,
   DashboardData,
@@ -252,18 +253,26 @@ function buildHealth(
   const guide = getStyleGuide();
   const lastOrder = chapters.length ? chapters[chapters.length - 1].order : 0;
 
-  // Plot threads left open, weighted by how near the end of the book they are.
+  // Plot threads left open, weighted by how long they have gone uncarried —
+  // named in the prose, or touched with book_plot_thread_touch.
+  const lastChapter = chapters[chapters.length - 1];
   for (const thread of bible?.plotThreads ?? []) {
     if (thread.status !== "open") continue;
     const openedIn = registry.chapters.find((c) => c.id === thread.openedIn);
-    const since = openedIn ? lastOrder - openedIn.order : 0;
+    const carried =
+      openedIn && lastChapter
+        ? lastCarried(thread, chapters, lastChapter, (c) => texts.get(c.id) ?? "")
+        : null;
+    const since = carried ? lastOrder - carried.order : 0;
     findings.push({
       severity: since >= 8 ? "serious" : "warning",
       area: "plot",
       summary: `Open thread: "${thread.title}"`,
-      detail: openedIn
-        ? `Opened in ${openedIn.id} ("${openedIn.title}") and still unresolved ${since} chapter(s) later.`
-        : `Opened in "${thread.openedIn}", which is no longer in the manuscript.`,
+      detail: !openedIn
+        ? `Opened in "${thread.openedIn}", which is not in the manuscript.`
+        : carried && carried.id !== openedIn.id
+        ? `Opened in ${openedIn.id} ("${openedIn.title}"), last carried in ${carried.id} ("${carried.title}"), ${since} chapter(s) ago.`
+        : `Opened in ${openedIn.id} ("${openedIn.title}") and not carried since, ${since} chapter(s) later.`,
     });
   }
 

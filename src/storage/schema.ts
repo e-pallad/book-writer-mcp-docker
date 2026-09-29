@@ -46,7 +46,12 @@ export interface ChapterMeta {
 export interface StoryBible {
   characters: Character[];
   settings: Setting[];
-  themes: string[];
+  /**
+   * What the book is about underneath the plot. Older projects hold bare
+   * strings here (nothing wrote to the field before the theme tools existed,
+   * but a hand-edited file might); readers normalise them with normaliseThemes.
+   */
+  themes: (Theme | string)[];
   plotThreads: PlotThread[];
   /**
    * Where the timeline lives, rather than the timeline itself. Events point at
@@ -105,13 +110,28 @@ export interface Setting {
   notes: string;
 }
 
+export interface Theme {
+  name: string;
+  description: string;
+}
+
 export interface PlotThread {
   id: string;
   title: string;
-  status: "open" | "resolved";
+  /** "abandoned" is a thread the author chose to drop, as opposed to forgot. */
+  status: "open" | "resolved" | "abandoned";
   openedIn: string;
   resolvedIn?: string;
   summary: string;
+  /**
+   * Words that show the thread is being carried in a chapter — a name, an
+   * object, a place — besides its title, which rarely appears in prose.
+   */
+  keywords?: string[];
+  /** Chapters the author has said carry the thread forward, named or not. */
+  touches?: { chapterId: string; note: string; at: string }[];
+  /** Why the thread was dropped. */
+  abandonedReason?: string;
 }
 
 /** The shape story-bible.json used before timeline.json existed. */

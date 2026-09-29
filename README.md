@@ -207,11 +207,15 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_character_get` | Retrieve a character's full profile |
 | `book_character_list` | List all characters |
 | `book_setting_add` | Add a setting (location, world, organization) |
+| `book_setting_update` | Change a setting's name, description, type or notes |
 | `book_setting_get` | Retrieve a setting's details |
 | `book_setting_list` | List all settings |
-| `book_plot_thread_add` | Track an open plot thread |
+| `book_plot_thread_add` | Track an open plot thread, with keywords the prose uses for it |
+| `book_plot_thread_update` | Edit a thread, or mark it `abandoned` with a reason |
+| `book_plot_thread_touch` | Record that a chapter carries a thread forward |
 | `book_plot_thread_resolve` | Mark a plot thread as resolved |
 | `book_plot_threads_list` | List plot threads by status |
+| `book_theme_add` / `book_theme_list` / `book_theme_remove` | The book's themes |
 | `book_continuity_check` | Cross-reference a chapter against the story bible |
 
 ### Timeline
@@ -393,6 +397,32 @@ history of the one it replaced.
 
 Both tools (and every other chapter tool) accept either a chapter id or the
 current chapter title.
+
+## Plot Threads and Themes
+
+A thread is carried by a chapter when the chapter opens it, when the prose
+names its title or one of its **keywords**, or when the author says so with
+`book_plot_thread_touch` — a chapter can keep a thread alive without naming it.
+`book_continuity_check` reminds you of an open thread only once it has rested
+for more than five chapters since it was last carried, and says where that was;
+the dashboard weights its finding the same way. A thread you drop on purpose is
+marked `abandoned` with `book_plot_thread_update`, keeps the reason, and is
+never nagged about again.
+
+```
+book_plot_thread_add title="Kells Schulden" openedIn="Der Kai" summary="…" \
+                     keywords=["Schuldschein", "der Wirt"]
+book_plot_thread_touch threadId="Kells Schulden" chapterId="ch-008" note="Kell weicht dem Wirt aus."
+book_plot_thread_update threadId="Der Brief" status="abandoned" reason="Doppelt mit der Schuld-Handlung."
+```
+
+Characters are addressed by id, name or alias, settings by id or name, threads
+by id or title, and a chapter anywhere in the story bible by id or title — it
+is stored as its id. A chapter that does not exist yet (a thread planned during
+outlining) is kept as given, with a warning.
+
+Themes — what the book is about underneath its plot — are kept with a short
+description of how the book treats them (`book_theme_add`).
 
 ## Per-Character Voice
 

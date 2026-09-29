@@ -27,6 +27,14 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 9. `book_style_check` — verify voice consistency; pass characterId to check
    a character's dialogue against their own voice profile as well
 
+## Workflow for Plot Threads
+- `book_plot_thread_add` with `keywords` the prose will actually use — the title
+  rarely appears in the text
+- `book_plot_thread_touch` when a chapter carries a thread without naming it
+- `book_plot_thread_update status=abandoned reason=...` for a thread dropped on
+  purpose; `book_plot_thread_resolve` when it is resolved
+- `book_setting_update` to change a setting; `book_theme_add` for the themes
+
 ## Workflow for Revising the Chapter List
 - `book_chapter_rename` — change a chapter title; it also renames the file, the
   heading inside it and the outline entry

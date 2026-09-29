@@ -8,10 +8,9 @@ import {
 } from "../storage/filestore";
 import { checkTimeline } from "./timeline-continuity";
 import { BookMCPError } from "../utils/errors";
-import { normalizeForCompare } from "../utils/text";
 import { resolveChapter } from "../storage/chapters";
 import { languageNote, projectLanguage } from "../lang";
-import { checkCharacters } from "./continuity-rules";
+import { checkCharacters, checkThreads } from "./continuity-rules";
 
 interface ContinuityFlag {
   type: "character" | "timeline" | "setting" | "plot_thread";
@@ -39,7 +38,6 @@ export function registerContinuityTools(server: McpServer): void {
       const chapter = resolveChapter(registry, chapterId);
 
       const content = readChapterFile(chapter.filename);
-      const contentLower = normalizeForCompare(content);
       const flags: ContinuityFlag[] = [];
 
       // Cross-reference the draft against the logged timeline before the
@@ -66,27 +64,12 @@ export function registerContinuityTools(server: McpServer): void {
       flags.push(...characterCheck.flags);
       skipped.push(...characterCheck.skipped);
 
-      // Check open plot threads that should be referenced
-      const chapterOrder = chapter.order;
-      for (const thread of bible.plotThreads) {
-        if (thread.status === "open") {
-          const openedChapter = registry.chapters.find(
-            (c) => c.id === thread.openedIn
-          );
-          if (
-            openedChapter &&
-            chapterOrder - openedChapter.order > 5 &&
-            !contentLower.includes(normalizeForCompare(thread.title))
-          ) {
-            flags.push({
-              type: "plot_thread",
-              severity: "warning",
-              description: `Open plot thread "${thread.title}" (opened in ${thread.openedIn}) hasn't been referenced in ${chapterOrder - openedChapter.order} chapters.`,
-              suggestion: `Consider weaving in the "${thread.title}" plot thread or resolving it.`,
-            });
-          }
-        }
-      }
+      // Open plot threads left resting too long.
+      flags.push(
+        ...checkThreads(chapter, registry.chapters, bible, (c) =>
+          c.id === chapter.id ? content : readChapterFile(c.filename)
+        )
+      );
 
       let summary: string;
       const errorCount = flags.filter((f) => f.severity === "error").length;
