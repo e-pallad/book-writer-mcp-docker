@@ -19,6 +19,7 @@ import { countWords, estimateReadingTime } from "../utils/wordcount";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare, slugify, splitParagraphs } from "../utils/text";
 import { snapshotIfChanged, trashHistory } from "../storage/history";
+import { recordWords, saveChapterContent } from "../storage/writing-log";
 import { requireProject, resolveChapter } from "../storage/chapters";
 import { isValidLanguageTag, rulesFor, supportedLanguages } from "../lang";
 
@@ -201,7 +202,7 @@ async function applyTitle(
   chapter.updatedAt = new Date().toISOString();
 
   if (headingUpdated) {
-    writeChapterFile(chapter.filename, retitled);
+    saveChapterContent(registry, chapter, retitled);
   } else if (content) {
     warnings.push(
       `The heading inside "chapters/${chapter.filename}" does not spell out the old title and was left unchanged. Edit it with book_chapter_update if the export should show the new title.`
@@ -320,18 +321,17 @@ export function registerManuscriptTools(server: McpServer): void {
         filename = chapterFilename(id, trimmedTitle);
         const chapterContent = content || `# ${trimmedTitle}\n\n`;
 
-        writeChapterFile(filename, chapterContent);
-
         meta = {
           id,
           title: trimmedTitle,
           filename,
           status: content ? "draft" : "outline",
-          wordCount: countWords(chapterContent),
+          wordCount: 0,
           order: chapterNum,
           synopsis,
           updatedAt: new Date().toISOString(),
         };
+        saveChapterContent(registry, meta, chapterContent);
 
         registry.chapters.push(meta);
         registry.chapters.sort((a, b) => a.order - b.order);
@@ -483,8 +483,7 @@ export function registerManuscriptTools(server: McpServer): void {
         }
 
         if (content !== undefined) {
-          writeChapterFile(chapter.filename, content);
-          chapter.wordCount = countWords(content);
+          saveChapterContent(registry, chapter, content);
         }
         if (synopsis !== undefined) chapter.synopsis = synopsis;
         if (status) chapter.status = status;
@@ -590,6 +589,8 @@ export function registerManuscriptTools(server: McpServer): void {
         }
 
         references = findReferences(chapter);
+        // The words leave the book either way, so the day's tally shows it.
+        recordWords(registry, chapter.id, countWords(readChapterFile(chapter.filename)), 0);
         trashedPath = keepFile ? null : trashChapterFile(chapter.filename);
         // Ids are reused once the highest chapter is deleted, so the revisions
         // go with the chapter rather than waiting for its successor.

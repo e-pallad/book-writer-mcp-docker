@@ -4,6 +4,12 @@ import { getCoverSpec, updateRegistry } from "../storage/filestore";
 import { Registry } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
 import { isValidLanguageTag, rulesFor, supportedLanguages } from "../lang";
+import { getWritingLog, readChapterFile } from "../storage/filestore";
+import { isValidTimeZone } from "../storage/writing-log";
+import { computeProgress } from "../storage/progress";
+import { requireProject } from "../storage/chapters";
+import { countWords } from "../utils/wordcount";
+import { isIsoDate } from "../utils/date";
 
 function jsonResult(payload: unknown) {
   return {
@@ -14,12 +20,30 @@ function jsonResult(payload: unknown) {
 // The fields book_init sets and nothing could change afterwards: a working
 // title that became the real one, a target that grew, a language that was
 // never set on a project created before the field existed.
-type Editable = Pick<Registry, "title" | "author" | "genre" | "targetWordCount" | "language">;
+type Editable = Pick<
+  Registry,
+  "title" | "author" | "genre" | "targetWordCount" | "language" | "dailyWordGoal" | "deadline" | "timezone"
+>;
 
 export function registerProjectTools(server: McpServer): void {
   server.tool(
+    "book_progress",
+    "How the writing is going, day by day: words written today against the daily goal, the current streak, the last 14 days, the average pace, and whether the deadline is in reach. Built from the writing log, which records every change to a chapter made through the tools.",
+    {},
+    async () => {
+      const registry = requireProject();
+      // Counted from the chapter files, the same figure the dashboard shows.
+      const totalWords = registry.chapters.reduce(
+        (sum, chapter) => sum + countWords(readChapterFile(chapter.filename)),
+        0
+      );
+      return jsonResult(computeProgress(registry, getWritingLog(), totalWords));
+    }
+  );
+
+  server.tool(
     "book_project_update",
-    "Change the book's own details after book_init: title, author, genre, target word count and the language it is written in. Every field is optional.",
+    "Change the book's own details after book_init: title, author, genre, target word count, the language it is written in, and the writing schedule — a daily word goal, a deadline and the time zone a writing day is counted in. Every field is optional.",
     {
       title: z.string().optional().describe("Book title"),
       author: z.string().optional().describe("Author name"),
@@ -31,6 +55,20 @@ export function registerProjectTools(server: McpServer): void {
         .describe(
           'Language the book is written in, as a BCP 47 tag ("de", "en-GB"). Picks the rules for the style and continuity checks and the language exports declare.'
         ),
+      dailyWordGoal: z
+        .number()
+        .optional()
+        .describe("Words to write per day; 0 removes the goal"),
+      deadline: z
+        .string()
+        .optional()
+        .describe('Date the draft is due, YYYY-MM-DD; "" removes it'),
+      timezone: z
+        .string()
+        .optional()
+        .describe(
+          'IANA time zone a writing day is counted in, e.g. "Europe/Berlin" (default: BOOK_TIMEZONE, else UTC)'
+        ),
     },
     async (input) => {
       const changes = Object.fromEntries(
@@ -39,7 +77,23 @@ export function registerProjectTools(server: McpServer): void {
 
       if (Object.keys(changes).length === 0) {
         throw new BookMCPError(
-          "Nothing to update: pass at least one of title, author, genre, targetWordCount or language."
+          "Nothing to update: pass at least one of title, author, genre, targetWordCount, language, dailyWordGoal, deadline or timezone."
+        );
+      }
+      if (
+        changes.dailyWordGoal !== undefined &&
+        (!Number.isFinite(changes.dailyWordGoal) || changes.dailyWordGoal < 0)
+      ) {
+        throw new BookMCPError("dailyWordGoal must be 0 (no goal) or a positive number.");
+      }
+      if (changes.deadline !== undefined && changes.deadline !== "") {
+        if (!isIsoDate(changes.deadline)) {
+          throw new BookMCPError(`"${changes.deadline}" is not a date. Use YYYY-MM-DD.`);
+        }
+      }
+      if (changes.timezone !== undefined && !isValidTimeZone(changes.timezone)) {
+        throw new BookMCPError(
+          `"${changes.timezone}" is not a time zone. Use an IANA name such as "Europe/Berlin".`
         );
       }
       for (const field of ["title", "author"] as const) {
@@ -68,6 +122,10 @@ export function registerProjectTools(server: McpServer): void {
           (previous as Record<string, unknown>)[key] = registry[key];
           registry[key] = typeof value === "string" ? ((value as string).trim() as never) : value;
         }
+        // Clearing a goal or a deadline removes the field rather than storing
+        // a zero or an empty string.
+        if (registry.dailyWordGoal === 0) delete registry.dailyWordGoal;
+        if (registry.deadline === "") delete registry.deadline;
       });
 
       const notes: string[] = [];
@@ -108,6 +166,9 @@ export function registerProjectTools(server: McpServer): void {
           genre: registry.genre,
           targetWordCount: registry.targetWordCount,
           language: registry.language ?? null,
+          dailyWordGoal: registry.dailyWordGoal ?? null,
+          deadline: registry.deadline ?? null,
+          timezone: registry.timezone ?? null,
         },
         ...(notes.length ? { notes } : {}),
       });

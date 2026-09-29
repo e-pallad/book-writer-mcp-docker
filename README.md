@@ -183,7 +183,8 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | Tool | What it does |
 |------|-------------|
 | `book_init` | Initialize a new book project (title, author, genre, target, language) |
-| `book_project_update` | Change title, author, genre, target word count or language later |
+| `book_project_update` | Change title, author, genre, target, language, daily goal, deadline or time zone |
+| `book_progress` | Today's words against the goal, streak, last 14 days, pace, deadline |
 | `book_chapter_create` | Create a new chapter |
 | `book_chapter_read` | Read a chapter's content and metadata |
 | `book_chapter_update` | Replace a chapter's whole content, or change title, synopsis or status |
@@ -365,6 +366,41 @@ Every scene-break spelling means the same thing, so use whichever your hands
 already know. The line does not need blank lines around it. `~~~` on its own is
 deliberately *not* a scene break, because most editors read it as the start of
 a code block.
+
+## Daily Goals, Deadline and the Writing Log
+
+Drafting runs on a daily quota and a deadline. Set them once:
+
+```
+book_project_update dailyWordGoal=1000 deadline="2027-03-31" timezone="Europe/Berlin"
+```
+
+Every change to chapter text made through the tools — creating, updating,
+replacing a passage, reverting, deleting — goes through one write path
+(`saveChapterContent` in `src/storage/writing-log.ts`) and is logged in
+`.book-mcp/writing-log.json` against the calendar day in the project's time
+zone. A container runs in UTC; without a `timezone`, a late session in Berlin
+would count towards tomorrow.
+
+`book_progress` answers from that log:
+
+| | |
+|---|---|
+| `today` | Words added and cut, net, and what is left to the goal |
+| `streak` | Days in a row with words added — and days that met the goal. Today does not break a streak before it is over |
+| `recent` | The last 14 days |
+| `averages` | Words per day over the days the log covers. Days before the log began are not counted as zeros |
+| `deadline` | Days left (today included), words a day needed, and whether the recent pace is enough — `null` until three days are logged |
+| `projectedFinish` | When the target is reached at the recent net pace |
+
+Each change counts what it grew or shrank the text by, so rewriting a paragraph
+at the same length adds nothing, and the goal is measured against words
+*added*. The dashboard's *Words over time* chart uses the log once it spans two
+days, and falls back to reconstructing from saved versions before that.
+
+Word counts count prose, not markup: a heading's `#`, a scene break, a quote's
+`>` and a free-standing dash are not words. A project counted by the older
+counter is recounted the next time its registry is written.
 
 ## Renaming and Deleting Chapters
 
@@ -686,6 +722,7 @@ your-book/
     story-bible.json    # Characters, settings, plot threads
     timeline.json       # Story events in chronological order
     ai-disclosure.json  # Recorded AI content declaration for KDP
+    writing-log.json    # Words added and cut per day
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification

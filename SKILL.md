@@ -63,6 +63,13 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
    version if the revision went the wrong way; the text it replaces is saved
    first, so the revert can itself be reverted
 
+## Workflow for a Writing Session
+1. `book_progress` — today's words against the goal, the streak, the deadline
+2. Write; every chapter change is logged automatically
+3. `book_progress` again at the end, to tell the author where they stand
+- Set the schedule with `book_project_update dailyWordGoal=... deadline=...
+  timezone=...` — the time zone decides where one writing day ends
+
 ## Workflow for Taking Stock
 1. `book_dashboard` — the whole state of the book at once: progress, who appears
    where, story order against chapter order, health findings, readiness

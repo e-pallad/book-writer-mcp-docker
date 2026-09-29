@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { readChapterFile, writeChapterFile, updateRegistry } from "../storage/filestore";
+import { readChapterFile, updateRegistry } from "../storage/filestore";
+import { saveChapterContent } from "../storage/writing-log";
 import { snapshotIfChanged } from "../storage/history";
 import { ChapterMeta } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
@@ -241,9 +242,7 @@ export function registerChapterEditTools(server: McpServer): void {
         // book_chapter_revert restores the text as it was.
         snapshotTimestamp = snapshotIfChanged(chapter.id, chapter.filename, next);
 
-        writeChapterFile(chapter.filename, next);
-        chapter.wordCount = wordCountAfter;
-        chapter.updatedAt = new Date().toISOString();
+        saveChapterContent(registry, chapter, next);
 
         // Taken against the new text, so the offsets point at the replacement.
         const newOffsets: number[] = [];

@@ -10,10 +10,12 @@ import {
   AuthorProfile,
   Timeline,
   AiDisclosure,
+  WritingLog,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
 import { withFileLock } from "./lock";
+import { countWords, WORD_COUNT_VERSION } from "../utils/wordcount";
 
 const MCP_DIR = ".book-mcp";
 const CHAPTERS_DIR = "chapters";
@@ -90,6 +92,7 @@ export function initProject(
     genre,
     targetWordCount,
     language,
+    countVersion: WORD_COUNT_VERSION,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     chapters: [],
@@ -244,6 +247,20 @@ export function updateTimeline(
   });
 }
 
+// Writing log
+//
+// Written only while registry.json is held: every change to chapter text runs
+// inside a registry transaction, and so does every entry here. That lock is
+// what serialises it, so it takes none of its own — and must never be written
+// from outside a registry transaction.
+export function getWritingLog(): WritingLog | null {
+  return readJSON<WritingLog>(mcpPath("writing-log.json"));
+}
+
+export function saveWritingLog(log: WritingLog): void {
+  writeJSON(mcpPath("writing-log.json"), log);
+}
+
 // AI content disclosure
 export function getAiDisclosure(): AiDisclosure | null {
   return readJSON<AiDisclosure>(mcpPath("ai-disclosure.json"));
@@ -337,8 +354,23 @@ export function updateRegistry(
     getRegistry,
     saveRegistry,
     "No book project found. Run book_init first.",
-    mutate
+    async (registry) => {
+      // A registry counted by an older word counter is recounted as part of
+      // its next write, so figures from the two counters are never mixed.
+      const recounted = recountIfStale(registry);
+      const outcome = await mutate(registry);
+      return outcome === ABORT && recounted ? undefined : outcome;
+    }
   );
+}
+
+function recountIfStale(registry: Registry): boolean {
+  if (registry.countVersion === WORD_COUNT_VERSION) return false;
+  for (const chapter of registry.chapters) {
+    chapter.wordCount = countWords(readChapterFile(chapter.filename));
+  }
+  registry.countVersion = WORD_COUNT_VERSION;
+  return true;
 }
 
 export function updateStoryBible(
@@ -477,5 +509,6 @@ export function getProjectPaths() {
     authorProfilePath: mcpPath("author-profile.json"),
     timelinePath: mcpPath(TIMELINE_FILE),
     aiDisclosurePath: mcpPath("ai-disclosure.json"),
+    writingLogPath: mcpPath("writing-log.json"),
   };
 }

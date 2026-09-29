@@ -6,12 +6,15 @@ import {
   getCoverSpec,
   getAuthorProfile,
   getAiDisclosure,
+  getWritingLog,
   readChapterFile,
 } from "../storage/filestore";
+import { dayKey, projectTimeZone } from "../storage/writing-log";
+import { totalsByDay } from "../storage/progress";
 import { listSnapshots, readSnapshot } from "../storage/history";
 import { Character, ChapterMeta, Registry } from "../storage/schema";
 import { diffStats } from "../utils/diff";
-import { countWords, estimateReadingTime } from "../utils/wordcount";
+import { countWords, estimateReadingTime, WORD_COUNT_VERSION } from "../utils/wordcount";
 import { wholeWordRegExp } from "../utils/text";
 import { BookMCPError } from "../utils/errors";
 import { lastCarried } from "../tools/continuity-rules";
@@ -174,6 +177,39 @@ function buildTimelineMap(registry: Registry, chapters: ChapterMeta[]): Timeline
  * chapter's word count at time t is the word count of the first snapshot taken
  * after t — and the current text once the snapshots run out.
  */
+/**
+ * The manuscript's word count over time from the writing log, when it covers
+ * at least two days. Exact for every change made through the tools since the
+ * log began — unlike the snapshot reconstruction below, which only sees
+ * prose changes and forgets all but the last 20 per chapter.
+ */
+function velocityFromLog(registry: Registry, totalWords: number, now: Date): Velocity | null {
+  const log = getWritingLog();
+  if (!log) return null;
+  const days = Object.keys(log.days).sort();
+  if (days.length < 2) return null;
+
+  const points = totalsByDay(log, totalWords).map((p) => ({
+    at: `${p.date}T12:00:00.000Z`,
+    totalWords: p.totalWords,
+  }));
+  const today = dayKey(now, projectTimeZone(registry));
+  if (days[days.length - 1] < today) {
+    points.push({ at: `${today}T12:00:00.000Z`, totalWords });
+  }
+
+  const first = days[0];
+  const startTotal = points[0].totalWords - (log.days[first].added - log.days[first].removed);
+  const span = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${first}T00:00:00Z`)) / DAY_MS) + 1;
+  return {
+    series: points,
+    wordsPerDay: span > 0 ? Math.round((totalWords - startTotal) / span) : null,
+    daysCovered: span,
+    projectedFinish: null, // filled in by the caller, which knows the target
+    coverage: `From the writing log, which records every change to a chapter made through the tools since ${first}. Edits made to the files by hand are not in it.`,
+  };
+}
+
 function buildVelocity(chapters: ChapterMeta[], texts: Map<string, string>): Velocity {
   const perChapter = new Map<string, { at: number; words: number }[]>();
   const timestamps = new Set<number>();
@@ -465,9 +501,13 @@ export function collectDashboard(): DashboardData {
     (sum, chapter) => sum + (liveWords.get(chapter.id) ?? 0),
     0
   );
-  const staleCounts = chapters.filter(
-    (chapter) => (liveWords.get(chapter.id) ?? 0) !== chapter.wordCount
-  );
+  // A registry counted by the older word counter differs everywhere for that
+  // reason alone, and is recounted on its next write; only a current one says
+  // anything about edits made outside the tools.
+  const staleCounts =
+    registry.countVersion === WORD_COUNT_VERSION
+      ? chapters.filter((chapter) => (liveWords.get(chapter.id) ?? 0) !== chapter.wordCount)
+      : [];
   const byStatus: Record<string, number> = {};
   for (const chapter of chapters) {
     byStatus[chapter.status] = (byStatus[chapter.status] || 0) + 1;
@@ -505,7 +545,8 @@ export function collectDashboard(): DashboardData {
   const bible = getStoryBible();
   const presence = buildPresence(chapters, bible?.characters ?? [], texts);
   const timeline = buildTimelineMap(registry, chapters);
-  const velocity = buildVelocity(chapters, texts);
+  const velocity =
+    velocityFromLog(registry, totalWords, now) ?? buildVelocity(chapters, texts);
 
   // Projection needs the target, which velocity does not see.
   if (velocity.wordsPerDay && velocity.wordsPerDay > 0) {

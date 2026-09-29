@@ -2,7 +2,6 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   readChapterFile,
-  writeChapterFile,
   updateRegistry,
 } from "../storage/filestore";
 import {
@@ -15,6 +14,7 @@ import {
 import { diffStats, unifiedDiff } from "../utils/diff";
 import { countWords } from "../utils/wordcount";
 import { requireProject, resolveChapter } from "./manuscript";
+import { saveChapterContent } from "../storage/writing-log";
 
 function jsonResult(payload: unknown) {
   return {
@@ -106,9 +106,7 @@ export function registerHistoryTools(server: McpServer): void {
         // revert should find an undo point waiting afterwards either way.
         undoTimestamp = saveSnapshot(chapter.id, current);
 
-        writeChapterFile(chapter.filename, restored);
-        chapter.wordCount = countWords(restored);
-        chapter.updatedAt = new Date().toISOString();
+        saveChapterContent(registry, chapter, restored);
       });
 
       const { added, removed } = diffStats(current, restored);

@@ -10,6 +10,22 @@ export interface Registry {
    * as English — the only language their checks ever knew.
    */
   language?: string;
+  /**
+   * Which revision of the word counter produced the chapters' wordCount. The
+   * counter stopped counting markup as words; a registry from before that is
+   * recounted the next time it is written.
+   */
+  countVersion?: number;
+  /** Words a day the author aims for; 0 or absent for no goal. */
+  dailyWordGoal?: number;
+  /** YYYY-MM-DD the draft is due. */
+  deadline?: string;
+  /**
+   * IANA time zone that decides where one writing day ends and the next
+   * begins ("Europe/Berlin"). A container runs in UTC, so without this a late
+   * evening session in Berlin would count towards tomorrow.
+   */
+  timezone?: string;
   createdAt: string;
   updatedAt: string;
   chapters: ChapterMeta[];
@@ -262,4 +278,22 @@ export interface AiDisclosure {
   /** Which reading of Amazon's policy this was recorded against. */
   policyVersion: string;
   policyVerifiedOn: string;
+}
+
+export interface WritingLog {
+  /** When the log began; nothing before this was recorded. */
+  startedAt: string;
+  /** One entry per calendar day in the project's time zone, keyed YYYY-MM-DD. */
+  days: Record<string, WritingDay>;
+}
+
+export interface WritingDay {
+  /** Words gained: each change contributes its growth, if it grew the text. */
+  added: number;
+  /** Words cut: each change contributes its shrinkage, if it shrank the text. */
+  removed: number;
+  /** Net change per chapter id. */
+  chapters: Record<string, number>;
+  /** How many changes were made. */
+  changes: number;
 }
