@@ -317,6 +317,31 @@ Tense and point-of-view rules read the **narration only**: quoted dialogue is
 blanked out first, because a character in a past-tense, third-person novel
 says "I think" without breaking anything.
 
+### Supported languages
+
+| | English (`en`) | German (`de`) |
+|---|---|---|
+| Tense | *he says* / *he said* | *sie geht*, *dann geht sie* / *sie ging*, *dann ging sie* |
+| Point of view | *I thought* / *she thought* | *dachte ich*, *ich wusste* / *dachte sie*, *er fragte sich* |
+| Passive | *was opened* | *wurde … geöffnet* (participles with *ge-*) |
+| Dialogue tags | *Kell said*, *said Kell* | *sagte Mara*, *Mara rief*, and 40-odd more verbs of speech |
+| Quotation marks | "…" “…” ‘…’ | „…“ »…« ‚…‘ — and «…» for Swiss and French texts |
+| Weekdays, time of day | *Saturday*, *night* | *Samstag* = *Sonnabend*, *nachts*, *am Morgen* |
+| Contradicted traits | *tall* vs *short* | *groß* vs *klein*, *kleine*, *kleinen* |
+
+German capitalises every noun, so nothing is taken for a name just because it
+is capitalised. A speaker is a capitalised word next to a verb of speech, and
+not one that follows an article, a possessive or a preposition (*die alte Frau
+sagte*, *die Frau am Tresen sagte*), nor one followed by an inverted pronoun
+(*Hinterher sagte er*). Adjectives are matched in lowercase with their endings,
+so *klein* finds *kleine* but never *Kleinigkeit*, and *alt* never the noun
+*Alter*. Bare *morgen* is not a time of day, because lowercased it cannot be
+told apart from *tomorrow*.
+
+Guillemets point either way: German sets »so«, French and Swiss «so». The
+direction is taken from whichever mark comes first, because pairing German
+»…« the French way captures the narration *between* two lines of speech.
+
 ## Writing Chapters: the Markup
 
 Chapters are plain Markdown files, and every output — the preview, the live

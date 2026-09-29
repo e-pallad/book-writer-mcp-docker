@@ -22,6 +22,14 @@ function mentionedTerms(text: string, terms: string[]): string[] {
   return terms.filter((term) => wholeWordRegExp(term).test(text));
 }
 
+// A day by its first name, whichever of its names the text used: "Sonnabend"
+// and "Samstag" are the same day and must not contradict each other.
+function weekdaysIn(text: string, rules: LanguageRules): string[] {
+  return rules.weekdays
+    .filter((names) => mentionedTerms(text, names).length > 0)
+    .map((names) => names[0]);
+}
+
 function dayPartsIn(text: string, rules: LanguageRules): string[] {
   return Object.entries(rules.dayParts)
     .filter(([, synonyms]) => mentionedTerms(text, synonyms).length > 0)
@@ -88,8 +96,8 @@ export function checkTimeline(
     if (!event.inStoryTime || !rules) continue;
     const loggedTime = normalizeForCompare(event.inStoryTime);
 
-    const loggedDays = mentionedTerms(loggedTime, rules.weekdays);
-    const draftedDays = mentionedTerms(normalizedContent, rules.weekdays);
+    const loggedDays = weekdaysIn(loggedTime, rules);
+    const draftedDays = weekdaysIn(normalizedContent, rules);
     const contradictingDays = draftedDays.filter((d) => !loggedDays.includes(d));
     if (loggedDays.length && contradictingDays.length) {
       flags.push({

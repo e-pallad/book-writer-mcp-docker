@@ -2,12 +2,13 @@
 // one place.
 
 import { getRegistry } from "../storage/filestore";
+import { de } from "./de";
 import { en } from "./en";
 import { Labels, LanguageRules } from "./types";
 
 export type { LanguageRules, Labels, DayPart } from "./types";
 
-const RULES: Record<string, LanguageRules> = { en };
+const RULES: Record<string, LanguageRules> = { en, de };
 
 const LABELS: Record<string, Labels> = {
   en: { contents: "Contents", by: "by", titlePage: "Title page", beginning: "Beginning" },

@@ -27,15 +27,27 @@ export interface LanguageRules {
   /** Verbs of speech that tag a line of dialogue: "said", "sagte". */
   speechVerbs: string[];
   /**
-   * Words that, directly before a capitalised word, make it a noun rather than
-   * a name. German capitalises every noun, so "Die Frau sagte" would otherwise
-   * read as a character called "Frau".
+   * Words that, before a capitalised word (with up to two adjectives in
+   * between), make it a noun rather than a name: articles, possessives,
+   * prepositions. German capitalises every noun, so "Die Frau sagte" would
+   * otherwise read as a character called "Frau".
    */
   determiners: string[];
   /** Capitalised words that are never a character's name. */
   notNames: string[];
+  /**
+   * Pronouns that, straight after a verb of speech, show the word before the
+   * verb was not its subject. German inverts after any opening adverb —
+   * "Hinterher sagte er" — so "Hinterher" is not a speaker. Left empty for
+   * English, where "Kell said he would come" has Kell as the subject.
+   */
+  invertedSubjectPronouns?: string[];
 
-  weekdays: string[];
+  /**
+   * The days of the week, one entry per day, each listing the names that day
+   * goes by ("samstag", "sonnabend"). Lowercase.
+   */
+  weekdays: string[][];
   dayParts: Record<DayPart, string[]>;
 
   /** A physical trait and the words that contradict it. */
@@ -45,6 +57,11 @@ export interface LanguageRules {
    * "kleine", "kleinen" — so an inflected opposite is still recognised.
    */
   adjectiveEndings: string[];
+  /**
+   * Adjectives are only ever lowercase, so a capitalised match is a noun —
+   * true for German, where "Alter" (age) is not the adjective "alt".
+   */
+  adjectivesLowercase?: boolean;
 }
 
 export interface Labels {

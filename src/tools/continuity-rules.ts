@@ -50,7 +50,7 @@ function oppositePattern(word: string, rules: LanguageRules): RegExp {
     : "";
   return new RegExp(
     `(?<![\\p{L}\\p{N}_])${escapeRegExp(word.normalize("NFC"))}${endings}(?![\\p{L}\\p{N}_])`,
-    "giu"
+    rules.adjectivesLowercase ? "gu" : "giu"
   );
 }
 

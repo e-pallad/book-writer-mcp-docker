@@ -53,27 +53,32 @@ interface QuotedSpan {
  * pairings is what produces spans that cover narration.
  */
 function quotedSpans(text: string): QuotedSpan[] {
-  for (const [open, close] of quotePairs(text)) {
-    const spans: QuotedSpan[] = [];
-    let index = 0;
-    while (index < text.length) {
-      const start = text.indexOf(open, index);
-      if (start === -1) break;
-      // A straight quote closes with the same character, so the search for the
-      // closing mark starts after the opening one.
-      const end = text.indexOf(close, start + 1);
-      if (end === -1) break;
-
-      const inner = text.slice(start + 1, end);
-      // Skip an apostrophe caught as an opening single quote ("don't").
-      if (inner.length > 1 && !/^\s*$/.test(inner)) {
-        spans.push({ start, end, open, close });
-      }
-      index = end + 1;
-    }
+  for (const pair of quotePairs(text)) {
+    const spans = spansFor(text, pair);
     if (spans.length) return spans;
   }
   return [];
+}
+
+function spansFor(text: string, [open, close]: [string, string]): QuotedSpan[] {
+  const spans: QuotedSpan[] = [];
+  let index = 0;
+  while (index < text.length) {
+    const start = text.indexOf(open, index);
+    if (start === -1) break;
+    // A straight quote closes with the same character, so the search for the
+    // closing mark starts after the opening one.
+    const end = text.indexOf(close, start + 1);
+    if (end === -1) break;
+
+    const inner = text.slice(start + 1, end);
+    // Skip an apostrophe caught as an opening single quote ("don't").
+    if (inner.length > 1 && !/^\s*$/.test(inner)) {
+      spans.push({ start, end, open, close });
+    }
+    index = end + 1;
+  }
+  return spans;
 }
 
 /**
@@ -85,13 +90,16 @@ function quotedSpans(text: string): QuotedSpan[] {
  */
 export function narrationOnly(passage: string): string {
   const text = passage.normalize("NFC");
-  let result = "";
-  let cursor = 0;
-  for (const span of quotedSpans(text)) {
-    result += text.slice(cursor, span.start) + " ".repeat(span.end + 1 - span.start);
-    cursor = span.end + 1;
+  // Every convention, not just the first that matches: blanking a little too
+  // much here costs nothing, while speech left in the narration is exactly
+  // what produces a false tense or POV finding.
+  const units = text.split("");
+  for (const pair of quotePairs(text)) {
+    for (const span of spansFor(text, pair)) {
+      for (let i = span.start; i <= span.end; i++) units[i] = " ";
+    }
   }
-  return result + text.slice(cursor);
+  return units.join("");
 }
 
 /**
@@ -155,18 +163,9 @@ function speakerNear(
  * character called Frau.
  */
 export function speakerTagIn(source: string, rules: LanguageRules): string | undefined {
-  const verbs = alternation(rules.speechVerbs);
-  const name = "(?<![\\p{L}])(\\p{Lu}[\\p{L}'’-]+)";
-  const determiners = rules.determiners.length
-    ? `(?<!(?<![\\p{L}])(?:${alternation(rules.determiners)})\\s+)`
-    : "";
-  const patterns = [
-    new RegExp(`${determiners}${name}\\s+(?:${verbs})(?![\\p{L}])`, "gu"),
-    new RegExp(`(?<![\\p{L}])(?:${verbs})\\s+${name}`, "gu"),
-  ];
-
   const notNames = new Set(rules.notNames.map((w) => w.toLowerCase()));
-  for (const pattern of patterns) {
+  // "Kell said" is preferred over "said Kell" when a window holds both.
+  for (const pattern of tagPatterns(rules)) {
     for (const match of source.matchAll(pattern)) {
       if (!notNames.has(match[1].toLowerCase())) return match[1];
     }
@@ -176,17 +175,9 @@ export function speakerTagIn(source: string, rules: LanguageRules): string | und
 
 /** Every name a dialogue tag gives in a text, in order, repeats included. */
 export function speakerTagsIn(text: string, rules: LanguageRules): string[] {
-  const verbs = alternation(rules.speechVerbs);
-  const name = "(?<![\\p{L}])(\\p{Lu}[\\p{L}'’-]+)";
-  const determiners = rules.determiners.length
-    ? `(?<!(?<![\\p{L}])(?:${alternation(rules.determiners)})\\s+)`
-    : "";
   const notNames = new Set(rules.notNames.map((w) => w.toLowerCase()));
   const found: { at: number; name: string }[] = [];
-  for (const pattern of [
-    new RegExp(`${determiners}${name}\\s+(?:${verbs})(?![\\p{L}])`, "gu"),
-    new RegExp(`(?<![\\p{L}])(?:${verbs})\\s+${name}`, "gu"),
-  ]) {
+  for (const pattern of tagPatterns(rules)) {
     for (const match of text.matchAll(pattern)) {
       if (!notNames.has(match[1].toLowerCase())) {
         found.push({ at: match.index ?? 0, name: match[1] });
@@ -194,6 +185,24 @@ export function speakerTagsIn(text: string, rules: LanguageRules): string[] {
     }
   }
   return found.sort((a, b) => a.at - b.at).map((f) => f.name);
+}
+
+// "<Name> said" and "said <Name>". The name is a capitalised word that does
+// not follow a determiner, allowing for up to two adjectives in between —
+// "die alte Frau sagte" names nobody.
+function tagPatterns(rules: LanguageRules): RegExp[] {
+  const verbs = alternation(rules.speechVerbs);
+  const name = "(?<![\\p{L}])(\\p{Lu}[\\p{L}'’-]+)";
+  const determiners = rules.determiners.length
+    ? `(?<!(?<![\\p{L}])(?:${alternation(rules.determiners)})\\s+(?:\\p{Ll}[\\p{L}-]*\\s+){0,2})`
+    : "";
+  const inverted = rules.invertedSubjectPronouns?.length
+    ? `(?!\\s+(?:${rules.invertedSubjectPronouns.join("|")})(?![\\p{L}]))`
+    : "";
+  return [
+    new RegExp(`${determiners}${name}\\s+(?:${verbs})(?![\\p{L}])${inverted}`, "gu"),
+    new RegExp(`(?<![\\p{L}])(?:${verbs})\\s+${name}`, "gu"),
+  ];
 }
 
 // Words as a regex alternation that also accepts a capitalised first letter,

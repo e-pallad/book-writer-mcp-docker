@@ -32,9 +32,11 @@ export const en: LanguageRules = {
     "first", "never", "other", "right", "think", "which", "while",
     "back", "down", "even", "here", "much", "only", "over", "such",
     "well", "what", "will", "also", "more", "must", "most", "went",
+    // Pronouns: "He said" names nobody, exactly as "he said" does.
+    "he", "we", "it", "i", "you",
   ],
 
-  weekdays: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+  weekdays: [["monday"], ["tuesday"], ["wednesday"], ["thursday"], ["friday"], ["saturday"], ["sunday"]],
   dayParts: {
     morning: ["morning", "dawn", "sunrise", "daybreak"],
     afternoon: ["afternoon", "midday", "noon"],
