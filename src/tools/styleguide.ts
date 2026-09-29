@@ -13,7 +13,9 @@ import {
   extractDialogue,
 } from "./voice";
 import { BookMCPError } from "../utils/errors";
-import { normalizeForCompare, wholeWordRegExp } from "../utils/text";
+import { normalizeForCompare } from "../utils/text";
+import { languageNote, projectLanguage } from "../lang";
+import { checkStyle } from "./style-rules";
 
 export function registerStyleGuideTools(server: McpServer): void {
   server.tool(
@@ -77,79 +79,8 @@ export function registerStyleGuideTools(server: McpServer): void {
       if (!guide)
         throw new BookMCPError("No style guide found. Use book_style_set to create one.");
 
-      const violations: { rule: string; excerpt: string; suggestion: string }[] = [];
-
-      // Check tense
-      if (guide.tense === "past") {
-        const presentIndicators = /\b(he says|she says|they say|I say|he walks|she walks|they walk|I walk|he runs|she runs)\b/gi;
-        const matches = passage.match(presentIndicators);
-        if (matches) {
-          violations.push({
-            rule: "Tense: should be past tense",
-            excerpt: matches.slice(0, 3).join(", "),
-            suggestion: "Convert present tense verbs to past tense.",
-          });
-        }
-      } else if (guide.tense === "present") {
-        const pastIndicators = /\b(he said|she said|they said|I said|he walked|she walked|they walked|I walked)\b/gi;
-        const matches = passage.match(pastIndicators);
-        if (matches) {
-          violations.push({
-            rule: "Tense: should be present tense",
-            excerpt: matches.slice(0, 3).join(", "),
-            suggestion: "Convert past tense verbs to present tense.",
-          });
-        }
-      }
-
-      // Check passive voice
-      const passivePattern = /\b(was|were|is|are|been|being)\s+\w+ed\b/gi;
-      const passiveMatches = passage.match(passivePattern);
-      if (passiveMatches && passiveMatches.length > 3) {
-        violations.push({
-          rule: "Excessive passive voice detected",
-          excerpt: passiveMatches.slice(0, 3).join(", "),
-          suggestion: "Rewrite in active voice where possible.",
-        });
-      }
-
-      // Check things to avoid
-      for (const avoidance of guide.thingsToAvoid) {
-        // Unicode-aware boundaries: \b would never match a term that starts or
-        // ends with a non-ASCII letter, so "Übertreibung" went unflagged.
-        const regex = wholeWordRegExp(avoidance);
-        const matches = passage.normalize("NFC").match(regex);
-        if (matches) {
-          violations.push({
-            rule: `Avoid: "${avoidance}"`,
-            excerpt: matches[0],
-            suggestion: `Remove or rephrase to avoid "${avoidance}".`,
-          });
-        }
-      }
-
-      // Check POV consistency
-      if (guide.pov.toLowerCase().includes("first person")) {
-        const thirdPersonNarration = /\b(he thought|she thought|he felt|she felt|he knew|she knew)\b/gi;
-        const matches = passage.match(thirdPersonNarration);
-        if (matches) {
-          violations.push({
-            rule: "POV: first person narration shouldn't use third-person internal thoughts",
-            excerpt: matches.slice(0, 3).join(", "),
-            suggestion: "Rewrite internal thoughts from first person perspective.",
-          });
-        }
-      } else if (guide.pov.toLowerCase().includes("third person")) {
-        const firstPersonNarration = /\b(I thought|I felt|I knew|I wondered)\b/gi;
-        const matches = passage.match(firstPersonNarration);
-        if (matches) {
-          violations.push({
-            rule: "POV: third person narration shouldn't use first-person internal thoughts",
-            excerpt: matches.slice(0, 3).join(", "),
-            suggestion: "Rewrite from third person perspective.",
-          });
-        }
-      }
+      const language = projectLanguage();
+      const { violations, skipped } = checkStyle(passage, guide, language.rules);
 
       // Everything above judges the passage as prose. What follows judges one
       // character's dialogue inside it, which is a different question: the
@@ -183,7 +114,8 @@ export function registerStyleGuideTools(server: McpServer): void {
             note: `${character.name} has no voice profile. Add one with book_character_update to check their dialogue against it.`,
           };
         } else {
-          const dialogue = extractDialogue(passage);
+          const dialogue = extractDialogue(passage, language.rules);
+          if (!language.rules) skipped.push("speakerTags");
           const { own, others } = attributeDialogue(character, dialogue);
 
           voiceViolations.push(...checkVoice(character, own));
@@ -209,10 +141,13 @@ export function registerStyleGuideTools(server: McpServer): void {
 
       const allViolations = [...violations, ...voiceViolations];
 
-      let score: "clean" | "minor_issues" | "needs_work";
-      if (allViolations.length === 0) score = "clean";
+      // A passage whose language-dependent checks could not run has not been
+      // shown to be clean, and is not reported as if it had.
+      let score: "clean" | "partially_checked" | "minor_issues" | "needs_work";
+      if (allViolations.length === 0) score = skipped.length ? "partially_checked" : "clean";
       else if (allViolations.length <= 2) score = "minor_issues";
       else score = "needs_work";
+      const languageMessage = languageNote(language, skipped);
 
       return {
         content: [
@@ -224,6 +159,9 @@ export function registerStyleGuideTools(server: McpServer): void {
                 styleViolations: violations,
                 voiceViolations,
                 score,
+                language: language.tag,
+                ...(skipped.length ? { checksSkipped: skipped } : {}),
+                ...(languageMessage ? { languageNote: languageMessage } : {}),
                 chapterId,
                 ...(voiceSummary ? { voice: voiceSummary } : {}),
               },

@@ -70,7 +70,7 @@ function renderReader(refreshSeconds: number): string {
     registry.author,
     markdownToHtml(markdown),
     wordCount,
-    { refreshSeconds }
+    { refreshSeconds, language: registry.language }
   );
 }
 

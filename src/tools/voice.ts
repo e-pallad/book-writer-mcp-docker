@@ -1,5 +1,7 @@
 import { Character, VoiceProfile } from "../storage/schema";
-import { normalizeForCompare, wholeWordRegExp } from "../utils/text";
+import { escapeRegExp, normalizeForCompare, wholeWordRegExp } from "../utils/text";
+import { LanguageRules } from "../lang/types";
+import { en } from "../lang/en";
 
 export interface VoiceViolation {
   rule: string;
@@ -18,36 +20,41 @@ export interface DialogueLine {
 
 // Straight and curly quotes, plus the guillemets and low-9 quotes that German
 // and French prose use. A passage is not required to be ASCII.
-const QUOTE_PAIRS: [string, string][] = [
-  ['"', '"'],
-  ["“", "”"], // “ ”
-  ["‘", "’"], // ‘ ’
-  ["«", "»"], // « »
-  ["„", "“"], // „ “
-];
+//
+// Guillemets point either way: German sets »so«, French and Swiss «so». Which
+// one a passage uses is decided by whichever mark comes first, because reading
+// German »…« with the French pairing captures the narration *between* two
+// lines of speech and treats it as dialogue.
+function quotePairs(text: string): [string, string][] {
+  const firstGuillemet = text.search(/[«»]/);
+  const guillemets: [string, string] =
+    firstGuillemet !== -1 && text[firstGuillemet] === "»" ? ["»", "«"] : ["«", "»"];
+  return [
+    ['"', '"'],
+    ["“", "”"], // “ ”
+    ["‘", "’"], // ‘ ’
+    guillemets,
+    ["„", "“"], // „ “
+    ["‚", "‘"], // ‚ ‘
+  ];
+}
 
-const SPEECH_VERBS = [
-  "said", "says", "asked", "asks", "replied", "replies", "whispered",
-  "whispers", "shouted", "shouts", "muttered", "mutters", "answered",
-  "answers", "called", "calls", "added", "adds", "snapped", "snaps",
-  "growled", "growls", "murmured", "murmurs", "breathed", "offered",
-];
+interface QuotedSpan {
+  start: number;
+  /** Index of the closing mark. */
+  end: number;
+  open: string;
+  close: string;
+}
 
 /**
- * Pulls quoted speech out of a passage, with the speaker when a dialogue tag
- * names one.
- *
- * Deliberately conservative: prose is not parseable, so a line whose speaker
- * cannot be identified is returned with `speaker` unset rather than guessed
- * at. book_style_check only attributes a line to the character under review
- * when the tag says so, or when there is no tag at all and the caller has
- * named whose voice to check.
+ * The quoted runs of a passage, using the first quoting convention that finds
+ * any. One convention per passage: a book is consistent about it, and mixing
+ * pairings is what produces spans that cover narration.
  */
-export function extractDialogue(passage: string): DialogueLine[] {
-  const lines: DialogueLine[] = [];
-  const text = passage.normalize("NFC");
-
-  for (const [open, close] of QUOTE_PAIRS) {
+function quotedSpans(text: string): QuotedSpan[] {
+  for (const [open, close] of quotePairs(text)) {
+    const spans: QuotedSpan[] = [];
     let index = 0;
     while (index < text.length) {
       const start = text.indexOf(open, index);
@@ -60,18 +67,56 @@ export function extractDialogue(passage: string): DialogueLine[] {
       const inner = text.slice(start + 1, end);
       // Skip an apostrophe caught as an opening single quote ("don't").
       if (inner.length > 1 && !/^\s*$/.test(inner)) {
-        lines.push({
-          text: inner,
-          raw: text.slice(start, end + 1),
-          speaker: speakerNear(text, start, end, open, close),
-        });
+        spans.push({ start, end, open, close });
       }
       index = end + 1;
     }
-    if (lines.length) break; // One quoting convention per passage.
+    if (spans.length) return spans;
   }
+  return [];
+}
 
-  return lines;
+/**
+ * The passage with every line of dialogue blanked out, offsets preserved.
+ *
+ * Tense and point-of-view rules are about the narration. Speech is exempt —
+ * a character in a past-tense, third-person novel says "I think" in the
+ * present and in the first person all the time — so those checks read this.
+ */
+export function narrationOnly(passage: string): string {
+  const text = passage.normalize("NFC");
+  let result = "";
+  let cursor = 0;
+  for (const span of quotedSpans(text)) {
+    result += text.slice(cursor, span.start) + " ".repeat(span.end + 1 - span.start);
+    cursor = span.end + 1;
+  }
+  return result + text.slice(cursor);
+}
+
+/**
+ * Pulls quoted speech out of a passage, with the speaker when a dialogue tag
+ * names one.
+ *
+ * Deliberately conservative: prose is not parseable, so a line whose speaker
+ * cannot be identified is returned with `speaker` unset rather than guessed
+ * at. book_style_check only attributes a line to the character under review
+ * when the tag says so, or when there is no tag at all and the caller has
+ * named whose voice to check.
+ *
+ * `rules` supply the verbs of speech. With none (a language this server has no
+ * rules for) no tag is recognised and every speaker stays unknown.
+ */
+export function extractDialogue(
+  passage: string,
+  rules: LanguageRules | null = en
+): DialogueLine[] {
+  const text = passage.normalize("NFC");
+  return quotedSpans(text).map(({ start, end, open, close }) => ({
+    text: text.slice(start + 1, end),
+    raw: text.slice(start, end + 1),
+    speaker: rules ? speakerNear(text, start, end, open, close, rules) : undefined,
+  }));
 }
 
 // Looks for "<Name> said" / "said <Name>" in the 60 characters on either side
@@ -87,7 +132,8 @@ function speakerNear(
   start: number,
   end: number,
   open: string,
-  close: string
+  close: string,
+  rules: LanguageRules
 ): string | undefined {
   const rawBefore = text.slice(Math.max(0, start - 60), start);
   const rawAfter = text.slice(end + 1, end + 61);
@@ -95,19 +141,72 @@ function speakerNear(
   const before = truncateAtQuote(rawBefore, open, close, "last");
   const after = truncateAtQuote(rawAfter, open, close, "first");
 
-  const verbs = SPEECH_VERBS.join("|");
+  for (const source of [after, before]) {
+    const name = speakerTagIn(source, rules);
+    if (name) return name;
+  }
+  return undefined;
+}
+
+/**
+ * The name in a dialogue tag — "Mara said", "said Mara", "sagte Mara" — or
+ * undefined. A capitalised word straight after a determiner is a noun, not a
+ * name: German capitalises every noun, and "Die Frau sagte" is not a
+ * character called Frau.
+ */
+export function speakerTagIn(source: string, rules: LanguageRules): string | undefined {
+  const verbs = alternation(rules.speechVerbs);
+  const name = "(?<![\\p{L}])(\\p{Lu}[\\p{L}'’-]+)";
+  const determiners = rules.determiners.length
+    ? `(?<!(?<![\\p{L}])(?:${alternation(rules.determiners)})\\s+)`
+    : "";
   const patterns = [
-    new RegExp(`(\\p{Lu}[\\p{L}'’-]+)\\s+(?:${verbs})\\b`, "u"),
-    new RegExp(`\\b(?:${verbs})\\s+(\\p{Lu}[\\p{L}'’-]+)`, "u"),
+    new RegExp(`${determiners}${name}\\s+(?:${verbs})(?![\\p{L}])`, "gu"),
+    new RegExp(`(?<![\\p{L}])(?:${verbs})\\s+${name}`, "gu"),
   ];
 
-  for (const source of [after, before]) {
-    for (const pattern of patterns) {
-      const match = pattern.exec(source);
-      if (match) return match[1];
+  const notNames = new Set(rules.notNames.map((w) => w.toLowerCase()));
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      if (!notNames.has(match[1].toLowerCase())) return match[1];
     }
   }
   return undefined;
+}
+
+/** Every name a dialogue tag gives in a text, in order, repeats included. */
+export function speakerTagsIn(text: string, rules: LanguageRules): string[] {
+  const verbs = alternation(rules.speechVerbs);
+  const name = "(?<![\\p{L}])(\\p{Lu}[\\p{L}'’-]+)";
+  const determiners = rules.determiners.length
+    ? `(?<!(?<![\\p{L}])(?:${alternation(rules.determiners)})\\s+)`
+    : "";
+  const notNames = new Set(rules.notNames.map((w) => w.toLowerCase()));
+  const found: { at: number; name: string }[] = [];
+  for (const pattern of [
+    new RegExp(`${determiners}${name}\\s+(?:${verbs})(?![\\p{L}])`, "gu"),
+    new RegExp(`(?<![\\p{L}])(?:${verbs})\\s+${name}`, "gu"),
+  ]) {
+    for (const match of text.matchAll(pattern)) {
+      if (!notNames.has(match[1].toLowerCase())) {
+        found.push({ at: match.index ?? 0, name: match[1] });
+      }
+    }
+  }
+  return found.sort((a, b) => a.at - b.at).map((f) => f.name);
+}
+
+// Words as a regex alternation that also accepts a capitalised first letter,
+// for a tag or an article at the start of a sentence ("Said Kell", "Die Frau").
+// Not the i flag: with it, \p{Lu} matches lowercase letters too, and "he said"
+// would read as a speaker called "he".
+function alternation(words: string[]): string {
+  return words
+    .map((word) => {
+      const first = word[0];
+      return `[${escapeRegExp(first.toLowerCase())}${escapeRegExp(first.toUpperCase())}]${escapeRegExp(word.slice(1))}`;
+    })
+    .join("|");
 }
 
 // Keeps the part of a window that belongs to this line: everything up to the

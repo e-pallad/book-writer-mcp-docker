@@ -20,6 +20,7 @@ import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare, slugify, splitParagraphs } from "../utils/text";
 import { snapshotIfChanged, trashHistory } from "../storage/history";
 import { requireProject, resolveChapter } from "../storage/chapters";
+import { isValidLanguageTag, rulesFor, supportedLanguages } from "../lang";
 
 export { resolveChapter, requireProject } from "../storage/chapters";
 
@@ -250,9 +251,22 @@ export function registerManuscriptTools(server: McpServer): void {
         .optional()
         .default(80000)
         .describe("Target word count (default: 80000)"),
+      language: z
+        .string()
+        .optional()
+        .default("en")
+        .describe(
+          'Language the book is written in, as a BCP 47 tag: "de", "en", "en-GB", "de-AT" (default: "en"). Decides which rules the style and continuity checks use and what language exports declare — set it for any book not written in English.'
+        ),
     },
-    async ({ title, author, genre, targetWordCount }) => {
-      const registry = initProject(title, author, genre, targetWordCount);
+    async ({ title, author, genre, targetWordCount, language }) => {
+      if (!isValidLanguageTag(language)) {
+        throw new BookMCPError(
+          `"${language}" is not a language tag. Use a BCP 47 tag such as "de", "en" or "en-GB".`
+        );
+      }
+      const registry = initProject(title, author, genre, targetWordCount, language.trim());
+      const rules = rulesFor(language);
       const paths = getProjectPaths();
       return jsonResult({
         message: `Book project "${title}" initialized successfully.`,
@@ -264,6 +278,9 @@ export function registerManuscriptTools(server: McpServer): void {
           chapters: paths.chaptersDir,
         },
         registry,
+        language: rules
+          ? `${registry.language} — style and continuity checks use the ${rules.name} rules.`
+          : `${registry.language} — no language-specific rules are available (supported: ${supportedLanguages().join(", ")}); checks that depend on the language will say they did not run.`,
       });
     }
   );

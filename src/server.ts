@@ -14,6 +14,7 @@ import { registerDashboardTools } from "./tools/dashboard";
 import { registerHistoryTools } from "./tools/history";
 import { registerChapterEditTools } from "./tools/chapter-edit";
 import { registerTimelineTools } from "./tools/timeline";
+import { registerProjectTools } from "./tools/project";
 
 // Builds a fully configured server instance. Shared by every transport so the
 // stdio and HTTP entry points always expose the same tools.
@@ -25,6 +26,7 @@ export function createServer(): McpServer {
 
   // Register all tool modules
   registerManuscriptTools(server);
+  registerProjectTools(server);
   registerHistoryTools(server);
   registerChapterEditTools(server);
   registerStoryBibleTools(server);

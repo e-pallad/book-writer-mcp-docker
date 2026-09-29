@@ -13,6 +13,9 @@
     "src/dashboard/**/*",
     "src/preview/**/*",
     "src/export/**/*",
+    "src/lang/**/*",
+    "src/tools/style-rules.ts",
+    "src/tools/continuity-rules.ts",
     "src/tools/voice.ts",
     "src/tools/timeline-continuity.ts",
     "src/tools/ai-disclosure-policy.ts"

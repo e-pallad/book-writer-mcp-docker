@@ -3,6 +3,13 @@ export interface Registry {
   author: string;
   genre: string;
   targetWordCount: number;
+  /**
+   * BCP 47 tag of the language the book is written in ("de", "en-GB"). Picks
+   * the rules the style and continuity checks use, and the language exports
+   * declare. Absent in projects created before it existed, which are treated
+   * as English — the only language their checks ever knew.
+   */
+  language?: string;
   createdAt: string;
   updatedAt: string;
   chapters: ChapterMeta[];

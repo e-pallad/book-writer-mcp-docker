@@ -182,7 +182,8 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 
 | Tool | What it does |
 |------|-------------|
-| `book_init` | Initialize a new book project |
+| `book_init` | Initialize a new book project (title, author, genre, target, language) |
+| `book_project_update` | Change title, author, genre, target word count or language later |
 | `book_chapter_create` | Create a new chapter |
 | `book_chapter_read` | Read a chapter's content and metadata |
 | `book_chapter_update` | Replace a chapter's whole content, or change title, synopsis or status |
@@ -284,6 +285,37 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_author_regenerate_intro` | Regenerate bio from profile data |
 | `book_author_update_intro` | Directly edit the generated bio |
 | `book_author_get_profile` | Retrieve the full author profile |
+
+## The Book's Language
+
+Every check that reads prose depends on the language it is written in: tense
+and point of view, passive voice, who a dialogue tag names, which weekday a
+chapter mentions, whether a trait is contradicted. `book_init` therefore takes
+a `language` (a BCP 47 tag, `en` by default), and `book_project_update` changes
+it later:
+
+```
+book_init title="Der Hafen" author="…" genre="Roman" language="de"
+book_project_update language="de-AT"
+```
+
+The rules live in `src/lang/`, one object per language. The language also
+decides what the exports declare: the EPUB's `dc:language` (which readers use
+for hyphenation and text-to-speech — `book_export_epub language=` still
+overrides it), the proofing language of the `.docx`, the preview's `lang`
+attribute, and labels such as *Contents* / *Inhalt*.
+
+**For a language without rules, the checks say so.** `book_style_check` and
+`book_continuity_check` list the checks that could not run under
+`checksSkipped`, and a passage with nothing flagged scores `partially_checked`
+rather than `clean` — a clean result nothing earned is worse than none.
+Checks that do not depend on the language, like the style guide's *things to
+avoid*, run either way. A project created before the field existed is treated
+as English, as it always was, and the reply says so.
+
+Tense and point-of-view rules read the **narration only**: quoted dialogue is
+blanked out first, because a character in a past-tense, third-person novel
+says "I think" without breaking anything.
 
 ## Writing Chapters: the Markup
 

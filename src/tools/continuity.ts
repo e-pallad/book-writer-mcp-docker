@@ -8,7 +8,10 @@ import {
 } from "../storage/filestore";
 import { checkTimeline } from "./timeline-continuity";
 import { BookMCPError } from "../utils/errors";
-import { CAPITALIZED_WORD_PATTERN, normalizeForCompare } from "../utils/text";
+import { normalizeForCompare } from "../utils/text";
+import { resolveChapter } from "../storage/chapters";
+import { languageNote, projectLanguage } from "../lang";
+import { checkCharacters } from "./continuity-rules";
 
 interface ContinuityFlag {
   type: "character" | "timeline" | "setting" | "plot_thread";
@@ -22,7 +25,7 @@ export function registerContinuityTools(server: McpServer): void {
     "book_continuity_check",
     "Cross-reference a chapter draft against the story bible for continuity issues",
     {
-      chapterId: z.string().describe("Chapter ID to check"),
+      chapterId: z.string().describe('Chapter ID (e.g. "ch-001") or chapter title'),
     },
     async ({ chapterId }) => {
       const registry = getRegistry();
@@ -33,9 +36,7 @@ export function registerContinuityTools(server: McpServer): void {
       if (!bible)
         throw new BookMCPError("No story bible found. Run book_init first.");
 
-      const chapter = registry.chapters.find((c) => c.id === chapterId);
-      if (!chapter)
-        throw new BookMCPError(`Chapter "${chapterId}" not found.`);
+      const chapter = resolveChapter(registry, chapterId);
 
       const content = readChapterFile(chapter.filename);
       const contentLower = normalizeForCompare(content);
@@ -43,113 +44,27 @@ export function registerContinuityTools(server: McpServer): void {
 
       // Cross-reference the draft against the logged timeline before the
       // story-bible checks, so a contradicted date leads the report.
+      const language = projectLanguage();
+      const skipped: string[] = [];
       const timeline = getTimeline();
       if (timeline) {
-        flags.push(
-          ...checkTimeline(chapter.id, content, registry, bible, timeline.events)
+        const timelineCheck = checkTimeline(
+          chapter.id,
+          content,
+          registry,
+          bible,
+          timeline.events,
+          language.rules
         );
-      }
-
-      // Check character name consistency
-      for (const character of bible.characters) {
-        const nameFound = contentLower.includes(normalizeForCompare(character.name));
-        const aliasFound = character.aliases.some((a) =>
-          contentLower.includes(normalizeForCompare(a))
-        );
-
-        if (nameFound || aliasFound) {
-          // Check if character traits are contradicted
-          for (const trait of character.traits) {
-            const traitLower = trait.toLowerCase();
-            // Look for obvious contradictions (e.g., "tall" character described as "short")
-            const opposites: Record<string, string[]> = {
-              tall: ["short", "small", "tiny", "petite"],
-              short: ["tall", "towering", "giant"],
-              old: ["young", "youthful", "teenage"],
-              young: ["old", "elderly", "aged", "ancient"],
-              thin: ["fat", "heavy", "obese", "large"],
-              fat: ["thin", "slim", "slender", "skinny"],
-              blonde: ["brunette", "dark-haired", "black-haired", "redhead"],
-              brunette: ["blonde", "fair-haired", "redhead"],
-            };
-
-            const traitOpposites = opposites[traitLower] || [];
-            for (const opp of traitOpposites) {
-              if (contentLower.includes(opp)) {
-                // Check if it's near the character's name
-                const nameIdx = contentLower.indexOf(normalizeForCompare(character.name));
-                const oppIdx = contentLower.indexOf(opp);
-                if (Math.abs(nameIdx - oppIdx) < 200) {
-                  flags.push({
-                    type: "character",
-                    severity: "error",
-                    description: `Character "${character.name}" is described as "${trait}" in story bible but "${opp}" appears near their name in this chapter.`,
-                    suggestion: `Verify the description of ${character.name} matches the story bible trait "${trait}".`,
-                  });
-                }
-              }
-            }
-          }
+        flags.push(...timelineCheck.flags);
+        if (timeline.events.some((e) => e.chapterId === chapter.id)) {
+          skipped.push(...timelineCheck.skipped);
         }
       }
 
-      // Check for characters mentioned but not in the story bible.
-      // The pattern is Unicode-aware: [A-Z][a-z]{2,} never matched a name like
-      // "Jörg" or "Émile", so those characters were silently skipped here.
-      const words = content.normalize("NFC").match(CAPITALIZED_WORD_PATTERN) || [];
-      const capitalizedWords = [...new Set(words)];
-      const knownNames = new Set(
-        bible.characters.flatMap((c) => [
-          normalizeForCompare(c.name),
-          ...c.aliases.map((a) => normalizeForCompare(a)),
-        ])
-      );
-      const commonWords = new Set([
-        "the", "and", "but", "for", "not", "you", "all", "can", "had", "her",
-        "was", "one", "our", "out", "are", "has", "his", "how", "its", "may",
-        "new", "now", "old", "see", "way", "who", "did", "get", "let", "say",
-        "she", "too", "use", "chapter", "scene", "part", "then", "than",
-        "that", "this", "with", "have", "from", "they", "been", "said",
-        "each", "make", "like", "long", "look", "many", "some", "them",
-        "into", "time", "very", "when", "come", "just", "know", "take",
-        "people", "could", "would", "about", "after", "before", "where",
-        "should", "still", "their", "there", "these", "those", "being",
-        "first", "never", "other", "right", "think", "which", "while",
-        "back", "down", "even", "here", "much", "only", "over", "such",
-        "well", "what", "will", "also", "more", "must", "most", "went",
-      ]);
-
-      for (const word of capitalizedWords) {
-        if (
-          !knownNames.has(normalizeForCompare(word)) &&
-          !commonWords.has(normalizeForCompare(word)) &&
-          word.length > 2
-        ) {
-          // Could be an unregistered character
-          const isLikelyName =
-            content.includes(`${word} said`) ||
-            content.includes(`${word} asked`) ||
-            content.includes(`${word} replied`) ||
-            content.includes(`${word} whispered`) ||
-            content.includes(`${word} shouted`);
-
-          if (isLikelyName) {
-            flags.push({
-              type: "character",
-              severity: "warning",
-              description: `"${word}" appears to be a character (used with dialogue tags) but is not in the story bible.`,
-              suggestion: `Add "${word}" to the story bible using book_character_add.`,
-            });
-          }
-        }
-      }
-
-      // Check for setting references
-      for (const setting of bible.settings) {
-        if (contentLower.includes(normalizeForCompare(setting.name))) {
-          // Setting is referenced — good
-        }
-      }
+      const characterCheck = checkCharacters(content, bible, language.rules);
+      flags.push(...characterCheck.flags);
+      skipped.push(...characterCheck.skipped);
 
       // Check open plot threads that should be referenced
       const chapterOrder = chapter.order;
@@ -178,7 +93,9 @@ export function registerContinuityTools(server: McpServer): void {
       const warningCount = flags.filter((f) => f.severity === "warning").length;
 
       if (flags.length === 0) {
-        summary = "No continuity issues detected.";
+        summary = skipped.length
+          ? `No continuity issues detected by the checks that ran; ${skipped.length} language-dependent check(s) did not run.`
+          : "No continuity issues detected.";
       } else {
         summary = `Found ${errorCount} error(s) and ${warningCount} warning(s).`;
       }
@@ -194,6 +111,11 @@ export function registerContinuityTools(server: McpServer): void {
               {
                 flags,
                 summary,
+                language: language.tag,
+                ...(skipped.length ? { checksSkipped: skipped } : {}),
+                ...(languageNote(language, skipped)
+                  ? { languageNote: languageNote(language, skipped) }
+                  : {}),
                 timelineEventsForChapter: eventsForChapter,
                 ...(timeline && eventsForChapter === 0
                   ? {

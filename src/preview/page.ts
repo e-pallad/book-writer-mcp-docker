@@ -10,6 +10,8 @@ export interface ReaderPageOptions {
    * so a saved page carries no executable code.
    */
   refreshSeconds?: number;
+  /** BCP 47 tag for the page, so the browser hyphenates in the book's language. */
+  language?: string;
 }
 
 export function buildReaderPage(
@@ -20,7 +22,7 @@ export function buildReaderPage(
   options: ReaderPageOptions = {}
 ): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${escapeHtml(options.language ?? "en")}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">

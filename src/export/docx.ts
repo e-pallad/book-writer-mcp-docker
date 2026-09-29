@@ -37,6 +37,11 @@ export interface DocxOptions {
   contentsLabel?: string;
   /** Word before the author's name on the title page. */
   byLabel?: string;
+  /**
+   * BCP 47 tag the text is marked with, so Word spell-checks and hyphenates it
+   * in the right language rather than the reader's default.
+   */
+  language?: string;
 }
 
 // Word measures in twentieths of a point ("twips"): 1440 to the inch.
@@ -126,6 +131,24 @@ function chapterBody(blocks: Block[], line: number): Paragraph[] {
   return paragraphs;
 }
 
+// Word wants a region: "de" alone is not a proofing language, "de-DE" is.
+const DEFAULT_REGIONS: Record<string, string> = {
+  de: "DE",
+  en: "US",
+  fr: "FR",
+  es: "ES",
+  it: "IT",
+  nl: "NL",
+  pt: "PT",
+};
+
+function wordLanguage(tag: string): string {
+  const [language, region] = tag.trim().split(/[-_]/);
+  const lower = language.toLowerCase();
+  if (region && /^[A-Za-z]{2}$/.test(region)) return `${lower}-${region.toUpperCase()}`;
+  return DEFAULT_REGIONS[lower] ? `${lower}-${DEFAULT_REGIONS[lower]}` : lower;
+}
+
 export async function buildDocx(options: DocxOptions): Promise<Buffer> {
   const line = options.lineSpacing === "double" ? 480 : 240;
   const halfPoints = options.fontSize * 2;
@@ -190,7 +213,11 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
     styles: {
       default: {
         document: {
-          run: { font: options.fontFamily, size: halfPoints },
+          run: {
+            font: options.fontFamily,
+            size: halfPoints,
+            ...(options.language ? { language: { value: wordLanguage(options.language) } } : {}),
+          },
         },
         // Word's built-in heading styles are blue sans-serif; a manuscript's
         // headings are the body face, in black. These override the built-in

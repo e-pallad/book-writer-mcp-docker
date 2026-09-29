@@ -8,7 +8,8 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 # Book Writer MCP — Claude Code Skill
 
 ## Workflow for Starting a New Book
-1. `book_init` — initialize project in current directory
+1. `book_init` — initialize project in current directory; pass `language`
+   (e.g. `"de"`) for any book not written in English
 2. `book_style_set` — capture voice, tone, POV before writing anything
 3. `book_outline_set` — structure before drafting
 4. Add key characters via `book_character_add` before Chapter 1
@@ -77,6 +78,11 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 3. `book_export_epub` — build the file readers will get
 
 ## Important Rules
+- Set the project language (`book_init language=...` or `book_project_update
+  language=...`) before relying on style or continuity checks — they apply the
+  rules of that language. If a check reports `checksSkipped` or
+  `partially_checked`, tell the author which checks did not run; never present
+  that as a clean result
 - ALWAYS load style guide before generating any prose
 - Check dialogue-heavy passages per character with
   `book_style_check characterId=...`, not just once for the whole passage —

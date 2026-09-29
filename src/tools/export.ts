@@ -7,6 +7,7 @@ import { BookMCPError } from "../utils/errors";
 import { countWords } from "../utils/wordcount";
 import { describeSelection, selectChapters } from "../export/select";
 import { buildDocx } from "../export/docx";
+import { labelsFor, projectLanguage } from "../lang";
 
 function projectDir(): string {
   return process.env.BOOK_PROJECT_DIR || process.cwd();
@@ -117,9 +118,14 @@ export function registerExportTools(server: McpServer): void {
         throw new BookMCPError("No chapters to export.");
       }
 
+      const language = projectLanguage().tag;
+      const labels = labelsFor(language);
       const buffer = await buildDocx({
         title: registry.title,
         author: registry.author,
+        language,
+        contentsLabel: labels.contents,
+        byLabel: labels.by,
         chapters,
         fontFamily,
         fontSize,

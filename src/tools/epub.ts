@@ -14,6 +14,7 @@ import { BookMCPError } from "../utils/errors";
 import { countWords } from "../utils/wordcount";
 import { escapeHtml, escapeXml, markdownToHtml } from "../utils/markdown";
 import { selectChapters } from "../export/select";
+import { isValidLanguageTag, labelsFor, Labels, projectLanguage } from "../lang";
 
 // EPUB3 requires dcterms:modified to the second, with no fractional part.
 function epubTimestamp(date: Date): string {
@@ -161,16 +162,17 @@ ${points}
 
 function buildNavDocument(
   meta: BookMetadata,
-  chapters: { title: string; href: string }[]
+  chapters: { title: string; href: string }[],
+  labels: Labels
 ): string {
   const items = chapters
     .map((c) => `      <li><a href="${c.href}">${escapeHtml(c.title)}</a></li>`)
     .join("\n");
 
   return xhtmlDocument(
-    "Contents",
+    labels.contents,
     `<nav epub:type="toc" id="toc">
-    <h1>Contents</h1>
+    <h1>${escapeHtml(labels.contents)}</h1>
     <ol>
 ${items}
     </ol>
@@ -178,8 +180,8 @@ ${items}
   <nav epub:type="landmarks" hidden="hidden">
     <h2>Landmarks</h2>
     <ol>
-      <li><a epub:type="titlepage" href="titlepage.xhtml">Title page</a></li>
-${chapters.length ? `      <li><a epub:type="bodymatter" href="${chapters[0].href}">Beginning</a></li>\n` : ""}    </ol>
+      <li><a epub:type="titlepage" href="titlepage.xhtml">${escapeHtml(labels.titlePage)}</a></li>
+${chapters.length ? `      <li><a epub:type="bodymatter" href="${chapters[0].href}">${escapeHtml(labels.beginning)}</a></li>\n` : ""}    </ol>
   </nav>`,
     meta.language
   );
@@ -214,9 +216,8 @@ export function registerEpubTools(server: McpServer): void {
       language: z
         .string()
         .optional()
-        .default("en")
         .describe(
-          'BCP 47 language tag for the book, e.g. "en", "en-GB", "de" (default: "en")'
+          'BCP 47 language tag for the book, e.g. "en", "en-GB", "de" (default: the project language set with book_init or book_project_update)'
         ),
       identifier: z
         .string()
@@ -229,10 +230,16 @@ export function registerEpubTools(server: McpServer): void {
         .optional()
         .describe("Optional blurb stored as the book's description metadata"),
     },
-    async ({ outputPath, includeChapters, language, identifier, description }) => {
+    async ({ outputPath, includeChapters, language: languageOverride, identifier, description }) => {
       const registry = getRegistry();
       if (!registry)
         throw new BookMCPError("No book project found. Run book_init first.");
+
+      const language = (languageOverride ?? projectLanguage().tag).trim();
+      if (!isValidLanguageTag(language)) {
+        throw new BookMCPError(`"${language}" is not a BCP 47 language tag.`);
+      }
+      const labels = labelsFor(language);
 
       const chapters = selectChapters(registry, includeChapters);
       if (chapters.length === 0) {
@@ -316,7 +323,7 @@ export function registerEpubTools(server: McpServer): void {
 
       zip.file("OEBPS/style.css", STYLESHEET);
       zip.file("OEBPS/titlepage.xhtml", buildTitlePage(meta));
-      zip.file("OEBPS/nav.xhtml", buildNavDocument(meta, entries));
+      zip.file("OEBPS/nav.xhtml", buildNavDocument(meta, entries, labels));
       zip.file("OEBPS/toc.ncx", buildNcx(meta, entries));
       zip.file("OEBPS/content.opf", buildPackageDocument(meta, entries));
       for (const document of documents) {

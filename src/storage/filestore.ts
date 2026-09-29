@@ -78,7 +78,8 @@ export function initProject(
   title: string,
   author: string,
   genre: string,
-  targetWordCount: number
+  targetWordCount: number,
+  language = "en"
 ): Registry {
   ensureDir(mcpPath());
   ensureDir(chaptersPath());
@@ -88,6 +89,7 @@ export function initProject(
     author,
     genre,
     targetWordCount,
+    language,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     chapters: [],
