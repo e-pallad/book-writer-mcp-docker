@@ -14,6 +14,13 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 3. `book_outline_set` — structure before drafting
 4. Add key characters via `book_character_add` before Chapter 1
 
+## Workflow for Plan against Manuscript
+- Create chapters from outline entries with the same title, or pass
+  `outlineTitle` when the chapter's title differs — they are then linked
+- `book_outline_compare` when revising: what is planned but not written, what
+  was written without a plan, what moved, whose synopsis changed
+- `book_outline_link` once, for a plan written after the chapters
+
 ## Workflow for Writing a Chapter
 1. `book_style_get` — always load style guide before drafting
 2. `book_character_list` — recall who exists

@@ -279,6 +279,12 @@ export interface OutlineChapter {
   title: string;
   synopsis: string;
   scenes?: string[];
+  /**
+   * The manuscript chapter this plan entry became. Without it the entry is
+   * matched by title, which breaks on a hand-edited title or two chapters
+   * sharing one.
+   */
+  chapterId?: string;
 }
 
 export interface AiDisclosure {

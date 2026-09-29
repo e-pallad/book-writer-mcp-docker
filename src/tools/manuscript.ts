@@ -24,6 +24,7 @@ import { recordWords, saveChapterContent } from "../storage/writing-log";
 import { findPlaceholders } from "../utils/placeholders";
 import { chaptersInOrder, requireProject, resolveChapter } from "../storage/chapters";
 import { assembleBook } from "../export/assemble";
+import { entryMatches } from "../outline/link";
 import { measureExtent } from "../export/normseite";
 import { isValidLanguageTag, rulesFor, supportedLanguages } from "../lang";
 
@@ -87,13 +88,21 @@ function retitleContent(
 // lose its outline entry. This is called with registry.json already held; the
 // registry -> outline order is the only one used anywhere, so it cannot
 // deadlock against an outline tool.
-async function renameInOutline(oldTitle: string, newTitle: string): Promise<boolean> {
+async function renameInOutline(
+  chapter: ChapterMeta,
+  oldTitle: string,
+  newTitle: string
+): Promise<boolean> {
   return updateOutlineIfPresent((outline) => {
     let renamed = false;
+    const before = { ...chapter, title: oldTitle };
     for (const act of outline.acts) {
-      for (const chapter of act.chapters) {
-        if (normalizeForCompare(chapter.title) === normalizeForCompare(oldTitle)) {
-          chapter.title = newTitle;
+      for (const entry of act.chapters) {
+        // A linked entry by its link; an unlinked one by the old title — and
+        // it is linked now, since the rename has just told us which it is.
+        if (entryMatches(entry, before)) {
+          entry.title = newTitle;
+          entry.chapterId = chapter.id;
           renamed = true;
         }
       }
@@ -154,12 +163,11 @@ function findReferences(chapter: ChapterMeta): string[] {
   if (outline) {
     for (const act of outline.acts) {
       for (const outlineChapter of act.chapters) {
-        if (
-          normalizeForCompare(outlineChapter.title) ===
-          normalizeForCompare(chapter.title)
-        ) {
+        if (entryMatches(outlineChapter, chapter)) {
           references.push(
-            `The outline still contains a chapter titled "${chapter.title}".`
+            `The outline still contains a chapter titled "${outlineChapter.title}"${
+              outlineChapter.chapterId ? `, linked to ${chapter.id}` : ""
+            }.`
           );
         }
       }
@@ -222,7 +230,7 @@ async function applyTitle(
   }
 
   const outlineRenamed = options.updateOutline
-    ? await renameInOutline(oldTitle, trimmed)
+    ? await renameInOutline(chapter, oldTitle, trimmed)
     : false;
 
   return {
@@ -321,8 +329,14 @@ export function registerManuscriptTools(server: McpServer): void {
         .boolean()
         .optional()
         .describe("false for a prologue or epilogue that carries no chapter number (default: true)"),
+      outlineTitle: z
+        .string()
+        .optional()
+        .describe(
+          "The outline entry this chapter is written from, when its title differs from the chapter's. The two are linked, so renaming either keeps them together."
+        ),
     },
-    async ({ title, synopsis, order, content, part, numbered }) => {
+    async ({ title, synopsis, order, content, part, numbered, outlineTitle }) => {
       const trimmedTitle = title.trim();
       if (!trimmedTitle)
         throw new BookMCPError("A chapter title cannot be empty.");
@@ -330,10 +344,27 @@ export function registerManuscriptTools(server: McpServer): void {
       let id!: string;
       let filename!: string;
       let meta!: ChapterMeta;
+      let linkedToOutline: string | null = null;
+
+      // Checked before anything is written: a chapter file must not be left
+      // behind by a call that then fails.
+      if (outlineTitle !== undefined) {
+        const planned = (getOutline()?.acts ?? []).some((act) =>
+          act.chapters.some(
+            (entry) =>
+              !entry.chapterId && normalizeForCompare(entry.title) === normalizeForCompare(outlineTitle)
+          )
+        );
+        if (!planned) {
+          throw new BookMCPError(
+            `The outline has no unlinked entry titled "${outlineTitle}". book_outline_get shows it; nothing was created.`
+          );
+        }
+      }
 
       // Held from reading the registry to writing it: two chapters created at
       // once would otherwise be handed the same id.
-      await updateRegistry((registry) => {
+      await updateRegistry(async (registry) => {
         // The id is independent of the position: two chapters may share an
         // order slot while being reordered.
         id = nextChapterId(registry);
@@ -357,6 +388,22 @@ export function registerManuscriptTools(server: McpServer): void {
 
         registry.chapters.push(meta);
         registry.chapters.sort((a, b) => a.order - b.order);
+
+        // Link the plan entry this chapter was written from: the one named,
+        // or an unlinked one with the same title. Registry, then outline.
+        const planTitle = outlineTitle ?? trimmedTitle;
+        const found = await updateOutlineIfPresent((outline) => {
+          for (const act of outline.acts) {
+            for (const entry of act.chapters) {
+              if (!entry.chapterId && normalizeForCompare(entry.title) === normalizeForCompare(planTitle)) {
+                entry.chapterId = meta.id;
+                return undefined;
+              }
+            }
+          }
+          return false;
+        });
+        linkedToOutline = found ? planTitle : null;
       });
 
       return jsonResult({
@@ -365,6 +412,7 @@ export function registerManuscriptTools(server: McpServer): void {
         filename,
         path: `chapters/${filename}`,
         meta,
+        ...(linkedToOutline ? { outline: `Linked to the outline entry "${linkedToOutline}".` } : {}),
       });
     }
   );

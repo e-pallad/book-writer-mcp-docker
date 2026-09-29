@@ -236,9 +236,11 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 
 | Tool | What it does |
 |------|-------------|
-| `book_outline_set` | Set the full hierarchical outline |
-| `book_outline_get` | Retrieve the outline |
-| `book_outline_update_chapter` | Update synopsis or scenes for one chapter |
+| `book_outline_set` | Set the full hierarchical outline; entries can be linked to chapters |
+| `book_outline_get` | Retrieve the outline, with each entry's chapter and its status |
+| `book_outline_update_chapter` | Update an entry's synopsis, scenes or link — found by title or by its chapter |
+| `book_outline_link` | Link entries to the chapters written from them, where the title is unambiguous |
+| `book_outline_compare` | Plan against manuscript: not yet written, not planned, moved, retitled |
 
 ### Style Guide
 
@@ -432,6 +434,33 @@ days, and falls back to reconstructing from saved versions before that.
 Word counts count prose, not markup: a heading's `#`, a scene break, a quote's
 `>` and a free-standing dash are not words. A project counted by the older
 counter is recounted the next time its registry is written.
+
+## The Outline and the Manuscript
+
+The outline is the plan; the chapters are what got written. They drift apart —
+chapters are split, merged, moved, dropped, renamed — and every revision asks
+the same question: what did I plan, what did I write, what changed?
+
+An outline entry can be **linked** to the chapter written from it. The link is
+by chapter id, so it survives a rename on either side and tells two chapters
+with the same title apart. It is made without asking:
+
+- `book_chapter_create` links the unlinked entry with the chapter's title — or
+  the one named in `outlineTitle`, when the chapter was written under another
+  title than planned (an entry that does not exist is refused before anything
+  is written);
+- `book_outline_set` links entries whose title matches exactly one chapter,
+  and takes an explicit `chapterId`;
+- `book_outline_link` catches up on a plan written after the chapters, and
+  reports the titles several chapters share, to link by hand with
+  `book_outline_update_chapter linkTo=...`.
+
+`book_outline_compare` then lays plan and manuscript side by side: entries not
+written yet, chapters the plan does not mention, chapters in a different place
+than planned (counted among the chapters both know, so one missing chapter does
+not make every later one look moved), chapters retitled since, and where the
+plan's synopsis and the chapter's now say different things. `book_outline_get`
+shows each entry with its chapter's status and length.
 
 ## Renaming and Deleting Chapters
 
