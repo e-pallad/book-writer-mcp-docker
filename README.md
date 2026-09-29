@@ -189,6 +189,8 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_chapter_read` | Read a chapter's content and metadata |
 | `book_chapter_update` | Replace a chapter's whole content, or change title, synopsis or status |
 | `book_chapter_find` | Find text in a chapter with paragraph numbers and context |
+| `book_find` | Find text across the whole book (whole words, case-insensitive if asked) |
+| `book_replace_text` | Replace text across the book — a dry run unless told otherwise |
 | `book_chapter_replace_text` | Replace one passage in a chapter, leaving the rest untouched |
 | `book_chapter_rename` | Rename a chapter (registry, file name, heading, outline) |
 | `book_chapter_delete` | Delete a chapter (file moves to `.book-mcp/trash/`) |
@@ -205,6 +207,7 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 |------|-------------|
 | `book_character_add` | Add a character to the story bible |
 | `book_character_update` | Update a character's details |
+| `book_character_rename` | Rename a character in the bible, the prose, synopses and the timeline |
 | `book_character_get` | Retrieve a character's full profile |
 | `book_character_list` | List all characters |
 | `book_setting_add` | Add a setting (location, world, organization) |
@@ -591,6 +594,36 @@ refused, and writes nothing.
 A replacement is spliced in literally: prose containing `$&` or `$1` survives
 intact, which it would not if this went through `String.replace`.
 
+### Changes across the whole book
+
+`book_find` searches every chapter (or the ones listed) and reports each
+occurrence with its chapter, paragraph and context. `wholeWord` keeps *Mara*
+from matching *Maraschino*; `caseSensitive=false` folds case, Unicode-aware. The
+counts always cover every match; the snippets stop at `maxResults`.
+
+`book_replace_text` is the book-wide replacement, and it is a **dry run by
+default**: it reports what would change, chapter by chapter, and tells you the
+`expectedCount` to pass with `dryRun=false`. If the book no longer matches that
+count when you apply it, nothing is written. Each changed chapter's previous
+text is filed first, so `book_chapter_revert` undoes the change chapter by
+chapter.
+
+`book_character_rename` renames a character everywhere at once — the story
+bible, the prose of every chapter, chapter and outline synopses, timeline
+events, and other characters' descriptions, notes and relationships. It is
+whole-word and case-sensitive. When old and new name have the same number of
+words, each changed word is renamed on its own as well (*Vance* → *Reed*),
+unless another character's name contains that word — *Tom Vance*'s surname is
+left alone and reported. English possessives (*Mara's*) are renamed; a form
+with letters attached, like the German genitive *Maras*, is **reported, not
+guessed at** — pass `includeGenitive=true` to rename *-s* genitives, or fix the
+rest with `book_replace_text`.
+
+```
+book_character_rename characterId="Mara Vance" newName="Maria Reed" dryRun=true
+book_character_rename characterId="Mara Vance" newName="Maria Reed" includeGenitive=true
+```
+
 ### Reading only part of a chapter
 
 `book_chapter_read` takes optional `fromParagraph` and `toParagraph` (1-based,
@@ -697,9 +730,13 @@ Tools reach it through the transaction helpers in `src/storage/filestore.ts`
 files should go through the matching helper rather than calling `get*` and
 `save*` in sequence. Read-only tools need no lock.
 
-A chapter rename is the one nested case: it holds `registry.json` and takes
-`outline.json` inside it. That order — registry, then outline — is the only one
-used anywhere, so the two cannot deadlock against each other.
+Two tools nest transactions. A chapter rename holds `registry.json` and takes
+`outline.json` inside it; `book_character_rename` holds `registry.json` and
+takes `story-bible.json`, then `timeline.json`, then `outline.json`. That order
+— registry, story bible, timeline, outline — is the only one used anywhere, and
+no tool that holds a later file reaches back for an earlier one, so they cannot
+deadlock. `writing-log.json` takes no lock of its own: it is only ever written
+inside a registry transaction, which already serialises it.
 
 Two caveats worth knowing:
 

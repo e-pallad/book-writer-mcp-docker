@@ -52,6 +52,14 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 3. `book_chapter_read fromParagraph=... toParagraph=...` — re-read only the
    part that changed, rather than the whole chapter
 
+## Workflow for a Change Across the Book
+1. `book_find` — see every occurrence first (use `wholeWord=true` for words and names)
+2. `book_replace_text` — runs as a dry run; show the author the result
+3. `book_replace_text dryRun=false expectedCount=N` — apply exactly that
+- Renaming a character: `book_character_rename` (try `dryRun=true` first), never
+  `book_character_update name=...`, which only changes the story bible. Pass on
+  the `notReplaced` forms it reports (German genitives like "Maras")
+
 ## Workflow for Revising a Chapter
 1. `book_chapter_history_list` — see what earlier versions exist and how far
    each one is from the current text
