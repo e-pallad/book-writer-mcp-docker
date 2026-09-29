@@ -87,6 +87,15 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 3. Act on the health findings before drafting more: an open thread or a timeline
    contradiction is cheaper to fix now than after another ten chapters
 
+## Workflow for Front and Back Matter
+- `book_matter_set type=copyright` (no content: written from the metadata),
+  `type=dedication content=...`, `type=epigraph content="> ..."`,
+  `type=acknowledgements content=...`, `type=about_author` (from the profile)
+- `type=dramatis_personae` without content lists the cast from the story bible —
+  show the author the `willPrint` text before publishing (spoilers)
+- Parts: `book_chapter_update part="..."`; a prologue: `numbered=false`;
+  chapter numbers: `book_project_update chapterNumbering="words"`
+
 ## Workflow for Exporting
 1. `book_stats` — confirm completeness
 2. `book_plot_threads_list status=open` — warn author of unresolved threads

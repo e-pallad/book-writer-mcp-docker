@@ -64,9 +64,42 @@ export interface LanguageRules {
   adjectivesLowercase?: boolean;
 }
 
+export type MatterLabelKey =
+  | "copyright"
+  | "dedication"
+  | "epigraph"
+  | "foreword"
+  | "preface"
+  | "dramatis_personae"
+  | "afterword"
+  | "acknowledgements"
+  | "glossary"
+  | "bibliography"
+  | "about_author"
+  | "also_by";
+
+/** Words the exports print, in the book's language. */
 export interface Labels {
   contents: string;
   by: string;
   titlePage: string;
   beginning: string;
+  /** "Kapitel 3" / "Drittes Kapitel"; null past the words the language has. */
+  chapter: (n: number, style: "numeric" | "words") => string;
+  /** "Zweiter Teil" / "Part Two". */
+  part: (n: number) => string;
+  matter: Record<MatterLabelKey, string>;
+  allRightsReserved: string;
+  firstPublished: string;
+  editions: { ebook: string; paperback: string; hardcover: string };
+  roles: {
+    editor: string;
+    translator: string;
+    illustrator: string;
+    cover_designer: string;
+    foreword: string;
+    other: string;
+  };
+  /** "Hafen-Krimis, Band 2". */
+  seriesVolume: (name: string, n?: number) => string;
 }

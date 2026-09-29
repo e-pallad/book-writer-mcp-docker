@@ -22,7 +22,15 @@ function jsonResult(payload: unknown) {
 // never set on a project created before the field existed.
 type Editable = Pick<
   Registry,
-  "title" | "author" | "genre" | "targetWordCount" | "language" | "dailyWordGoal" | "deadline" | "timezone"
+  | "title"
+  | "author"
+  | "genre"
+  | "targetWordCount"
+  | "language"
+  | "dailyWordGoal"
+  | "deadline"
+  | "timezone"
+  | "chapterNumbering"
 >;
 
 export function registerProjectTools(server: McpServer): void {
@@ -63,6 +71,12 @@ export function registerProjectTools(server: McpServer): void {
         .string()
         .optional()
         .describe('Date the draft is due, YYYY-MM-DD; "" removes it'),
+      chapterNumbering: z
+        .enum(["none", "numeric", "words"])
+        .optional()
+        .describe(
+          'How the exports number chapters: "none" (titles only, the default), "numeric" ("Kapitel 3" / "Chapter 3"), "words" ("Drittes Kapitel" / "Chapter Three")'
+        ),
       timezone: z
         .string()
         .optional()
@@ -77,7 +91,7 @@ export function registerProjectTools(server: McpServer): void {
 
       if (Object.keys(changes).length === 0) {
         throw new BookMCPError(
-          "Nothing to update: pass at least one of title, author, genre, targetWordCount, language, dailyWordGoal, deadline or timezone."
+          "Nothing to update: pass at least one of title, author, genre, targetWordCount, language, dailyWordGoal, deadline, timezone or chapterNumbering."
         );
       }
       if (
@@ -126,6 +140,7 @@ export function registerProjectTools(server: McpServer): void {
         // a zero or an empty string.
         if (registry.dailyWordGoal === 0) delete registry.dailyWordGoal;
         if (registry.deadline === "") delete registry.deadline;
+        if (registry.chapterNumbering === "none") delete registry.chapterNumbering;
       });
 
       const notes: string[] = [];
@@ -169,6 +184,7 @@ export function registerProjectTools(server: McpServer): void {
           dailyWordGoal: registry.dailyWordGoal ?? null,
           deadline: registry.deadline ?? null,
           timezone: registry.timezone ?? null,
+          chapterNumbering: registry.chapterNumbering ?? "none",
         },
         ...(notes.length ? { notes } : {}),
       });

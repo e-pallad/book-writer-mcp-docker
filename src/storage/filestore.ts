@@ -12,6 +12,7 @@ import {
   AiDisclosure,
   WritingLog,
   PublishingMetadata,
+  Matter,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
@@ -284,6 +285,27 @@ export function updateMetadata(
   });
 }
 
+// Front and back matter
+export function getMatter(): Matter | null {
+  return readJSON<Matter>(mcpPath("matter.json"));
+}
+
+export function saveMatter(matter: Matter): void {
+  writeJSON(mcpPath("matter.json"), matter);
+}
+
+/** Amends the front and back matter, creating the file on first use. */
+export function updateMatter(
+  mutate: (matter: Matter) => unknown | Promise<unknown>
+): Promise<Matter> {
+  return withFileLock(mcpPath("matter.json"), async () => {
+    const matter = getMatter() ?? { sections: [] };
+    const outcome = await mutate(matter);
+    if (outcome !== ABORT) saveMatter(matter);
+    return matter;
+  });
+}
+
 // AI content disclosure
 export function getAiDisclosure(): AiDisclosure | null {
   return readJSON<AiDisclosure>(mcpPath("ai-disclosure.json"));
@@ -534,5 +556,6 @@ export function getProjectPaths() {
     aiDisclosurePath: mcpPath("ai-disclosure.json"),
     writingLogPath: mcpPath("writing-log.json"),
     metadataPath: mcpPath("metadata.json"),
+    matterPath: mcpPath("matter.json"),
   };
 }

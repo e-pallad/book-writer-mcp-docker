@@ -17,6 +17,7 @@ import { registerTimelineTools } from "./tools/timeline";
 import { registerProjectTools } from "./tools/project";
 import { registerBookEditTools } from "./tools/book-edit";
 import { registerMetadataTools } from "./tools/metadata";
+import { registerMatterTools } from "./tools/matter";
 
 // Builds a fully configured server instance. Shared by every transport so the
 // stdio and HTTP entry points always expose the same tools.
@@ -41,6 +42,7 @@ export function createServer(): McpServer {
   registerEpubTools(server);
   registerCoverTools(server);
   registerMetadataTools(server);
+  registerMatterTools(server);
   registerAiDisclosureTools(server);
   registerAuthorTools(server);
   registerPreviewTools(server);

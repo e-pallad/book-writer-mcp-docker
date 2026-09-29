@@ -301,8 +301,16 @@ export function registerManuscriptTools(server: McpServer): void {
         .string()
         .optional()
         .describe("Optional initial draft content"),
+      part: z
+        .string()
+        .optional()
+        .describe('The part of the book it belongs to, e.g. "Die Stadt"; consecutive chapters with the same part share a part page'),
+      numbered: z
+        .boolean()
+        .optional()
+        .describe("false for a prologue or epilogue that carries no chapter number (default: true)"),
     },
-    async ({ title, synopsis, order, content }) => {
+    async ({ title, synopsis, order, content, part, numbered }) => {
       const trimmedTitle = title.trim();
       if (!trimmedTitle)
         throw new BookMCPError("A chapter title cannot be empty.");
@@ -330,6 +338,8 @@ export function registerManuscriptTools(server: McpServer): void {
           order: chapterNum,
           synopsis,
           updatedAt: new Date().toISOString(),
+          ...(part?.trim() ? { part: part.trim() } : {}),
+          ...(numbered === false ? { numbered: false } : {}),
         };
         saveChapterContent(registry, meta, chapterContent);
 
@@ -426,7 +436,7 @@ export function registerManuscriptTools(server: McpServer): void {
   // book_chapter_update
   server.tool(
     "book_chapter_update",
-    "Update a chapter: content, title, synopsis and/or status. Every field is optional, so it can retitle a chapter without touching its prose.",
+    "Update a chapter: content, title, synopsis, status, the part it belongs to, or whether it carries a number. Every field is optional, so it can retitle a chapter without touching its prose.",
     {
       chapterId: z
         .string()
@@ -444,16 +454,26 @@ export function registerManuscriptTools(server: McpServer): void {
         .enum(["outline", "draft", "review", "final"])
         .optional()
         .describe("Updated chapter status"),
+      part: z
+        .string()
+        .optional()
+        .describe('The part of the book it belongs to ("" takes it out of any part)'),
+      numbered: z
+        .boolean()
+        .optional()
+        .describe("false for a prologue or epilogue that carries no chapter number"),
     },
-    async ({ chapterId, content, title, synopsis, status }) => {
+    async ({ chapterId, content, title, synopsis, status, part, numbered }) => {
       if (
         content === undefined &&
         title === undefined &&
         synopsis === undefined &&
-        status === undefined
+        status === undefined &&
+        part === undefined &&
+        numbered === undefined
       ) {
         throw new BookMCPError(
-          "Nothing to update: pass at least one of content, title, synopsis or status."
+          "Nothing to update: pass at least one of content, title, synopsis, status, part or numbered."
         );
       }
 
@@ -487,6 +507,14 @@ export function registerManuscriptTools(server: McpServer): void {
         }
         if (synopsis !== undefined) chapter.synopsis = synopsis;
         if (status) chapter.status = status;
+        if (part !== undefined) {
+          if (part.trim()) chapter.part = part.trim();
+          else delete chapter.part;
+        }
+        if (numbered !== undefined) {
+          if (numbered) delete chapter.numbered;
+          else chapter.numbered = false;
+        }
         chapter.updatedAt = new Date().toISOString();
       });
 
@@ -654,6 +682,8 @@ export function registerManuscriptTools(server: McpServer): void {
         wordCount: c.wordCount,
         synopsis: c.synopsis,
         order: c.order,
+        ...(c.part ? { part: c.part } : {}),
+        ...(c.numbered === false ? { numbered: false } : {}),
       }));
 
       return jsonResult({ chapters: table });

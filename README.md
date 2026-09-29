@@ -250,6 +250,15 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_style_list_influences` | List author influences |
 | `book_style_remove_influence` | Remove an author influence |
 
+### Front & Back Matter
+
+| Tool | What it does |
+|------|-------------|
+| `book_matter_set` | Add or replace a section: copyright page, dedication, epigraph, foreword, preface, cast list, afterword, acknowledgements, glossary, bibliography, about the author, also by |
+| `book_matter_get` | One section, and what it will print |
+| `book_matter_list` | All sections in reading order |
+| `book_matter_remove` | Remove a section |
+
 ### Export
 
 | Tool | What it does |
@@ -763,6 +772,7 @@ your-book/
     ai-disclosure.json  # Recorded AI content declaration for KDP
     writing-log.json    # Words added and cut per day
     metadata.json       # Publishing metadata: subtitle, series, ISBNs, keywords…
+    matter.json         # Front and back matter
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
@@ -814,6 +824,52 @@ epubcheck. Its identifier is the e-book ISBN when there is one; otherwise a UUID
 kept in `metadata.json`, so a re-exported draft is the same book to a reader's
 library rather than a second copy. The title pages of the EPUB and the `.docx`
 show the subtitle, and the dashboard's readiness panel lists what is missing.
+
+## Front Matter, Back Matter, Parts and Chapter Numbers
+
+A printed book is more than its chapters. `book_matter_set` adds the rest, and
+every export — Markdown, DOCX, EPUB and the preview, which all build on
+`src/export/assemble.ts` — sets it in the classic order:
+
+| Where | What |
+|---|---|
+| Before the contents | Title page, **copyright page** (*Impressum*), **dedication**, **epigraph** (*Motto*) |
+| After the contents | **Foreword**, **preface**, **cast list** (*Personen*) |
+| Body | Part pages and chapters |
+| After the last chapter | **Afterword**, **acknowledgements**, **glossary**, **bibliography**, **about the author**, **also by** |
+
+Three sections can write themselves when given no content, from data the
+project already has — and are written again at every export, so they are never
+stale:
+
+- the **copyright page** from the metadata: title, subtitle and series, the
+  copyright line, *All rights reserved*, the edition, publisher, contributors
+  and one ISBN per edition;
+- the **cast list** from the story bible: every character above a minor role,
+  main roles first, with the first sentence of their description. Read it for
+  spoilers before publishing, or give the section text of its own;
+- **about the author** from the author profile's bio.
+
+Headings come in the book's language (*Danksagung*, *Acknowledgements*) and can
+be overridden with `title`; a dedication, an epigraph and the copyright page
+print without one. `position` moves a section to the other end of the book.
+
+**Parts.** `book_chapter_update part="Die Stadt"` puts a chapter in a part;
+consecutive chapters in the same part share one part page, labelled *Erster
+Teil* / *Part One* unless the part's own title already says so. In the EPUB the
+contents nest the chapters under their part.
+
+**Chapter numbers.** `book_project_update chapterNumbering="words"` prints
+*Drittes Kapitel* / *Chapter Three* above each chapter title (`"numeric"`:
+*Kapitel 3*). A prologue or epilogue marked `numbered=false` carries no number
+and does not push the chapters after it up by one; a chapter exported alone
+keeps the number it has in the whole book.
+
+In the EPUB, each piece of matter is its own document with its EPUB
+structural semantics (`copyright-page`, `dedication`, `epigraph`, `foreword`,
+`acknowledgments`, …), chapters and parts are `<section epub:type="chapter">`
+and `"part"`, and the landmarks point at the copyright page — it all passes
+epubcheck.
 
 ## AI Content Disclosure
 

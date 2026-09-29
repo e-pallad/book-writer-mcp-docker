@@ -315,10 +315,24 @@ export function markdownToHtml(md: string, options: MarkdownOptions = {}): strin
   return blocksHtml(parseBlocks(md), options);
 }
 
+/** One line of inline markdown — a heading's text — as HTML. */
+export function inlineMarkdownToHtml(text: string, options: MarkdownOptions = {}): string {
+  return inlineHtml(parseInline(text), options.xhtml ? "<br />" : "<br>");
+}
+
+// The chapter's own "# Title" line, when the file opens with one.
+const LEADING_HEADING = /^\s*[ \t]{0,3}#[ \t]+(.+?)[ \t]*#*[ \t]*(?:\r?\n|$)/;
+
+/** The text of the heading a chapter file opens with, or null. */
+export function leadingHeadingText(md: string): string | null {
+  const match = LEADING_HEADING.exec(md);
+  return match ? match[1] : null;
+}
+
 /**
  * Strips the leading `# Heading` from a chapter, for the places that supply
  * their own title markup and would otherwise show it twice.
  */
 export function stripLeadingHeading(md: string): string {
-  return md.replace(/^[ \t]{0,3}#[ \t]+.*(?:\r?\n)+/, "");
+  return md.replace(/^\s*[ \t]{0,3}#[ \t]+.*(?:\r?\n|$)(?:\r?\n)*/, "");
 }

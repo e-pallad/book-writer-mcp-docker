@@ -16,6 +16,11 @@ export interface Registry {
    * recounted the next time it is written.
    */
   countVersion?: number;
+  /**
+   * How chapters are numbered in the exports: not at all (the title alone,
+   * the default), "Kapitel 3", or "Drittes Kapitel".
+   */
+  chapterNumbering?: "none" | "numeric" | "words";
   /** Words a day the author aims for; 0 or absent for no goal. */
   dailyWordGoal?: number;
   /** YYYY-MM-DD the draft is due. */
@@ -57,6 +62,16 @@ export interface ChapterMeta {
   order: number;
   synopsis: string;
   updatedAt: string;
+  /**
+   * The part of the book the chapter belongs to ("Die Stadt"). Consecutive
+   * chapters with the same part share one part page in the exports.
+   */
+  part?: string;
+  /**
+   * False for a chapter that carries no number — a prologue, an epilogue —
+   * so the chapters after it are numbered from where they would be.
+   */
+  numbered?: boolean;
 }
 
 export interface StoryBible {
@@ -332,3 +347,37 @@ export type ContributorRole =
   | "cover_designer"
   | "foreword"
   | "other";
+
+/** Front and back matter: everything in a book that is not a chapter. */
+export type MatterType =
+  | "copyright"
+  | "dedication"
+  | "epigraph"
+  | "foreword"
+  | "preface"
+  | "dramatis_personae"
+  | "afterword"
+  | "acknowledgements"
+  | "glossary"
+  | "bibliography"
+  | "about_author"
+  | "also_by";
+
+export interface MatterSection {
+  type: MatterType;
+  /**
+   * Markdown. Empty for a section written at export time from the project's
+   * own data — the copyright page from the metadata, the cast from the story
+   * bible, the author's bio from their profile.
+   */
+  content: string;
+  /** Heading override; the language's default otherwise. */
+  title?: string;
+  /** Moves a section to the other end of the book (a cast list at the back). */
+  position?: "front" | "back";
+  updatedAt: string;
+}
+
+export interface Matter {
+  sections: MatterSection[];
+}

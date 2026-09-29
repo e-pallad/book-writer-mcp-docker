@@ -2,12 +2,12 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as fs from "fs";
 import * as path from "path";
-import { getMetadata, getRegistry, readChapterFile } from "../storage/filestore";
+import { getRegistry } from "../storage/filestore";
 import { BookMCPError } from "../utils/errors";
 import { countWords } from "../utils/wordcount";
 import { describeSelection, selectChapters } from "../export/select";
 import { buildDocx } from "../export/docx";
-import { labelsFor, projectLanguage } from "../lang";
+import { assembleBook, bookToMarkdown } from "../export/assemble";
 
 function projectDir(): string {
   return process.env.BOOK_PROJECT_DIR || process.cwd();
@@ -23,11 +23,15 @@ const includeChaptersSchema = z
 export function registerExportTools(server: McpServer): void {
   server.tool(
     "book_export_markdown",
-    "Compile all chapters in order into a single markdown file",
+    "Compile the book into a single markdown file: title block, front matter, chapters in order (with part headings and chapter numbers when set), back matter.",
     {
       outputPath: z.string().optional().describe("Output file path (default: ./manuscript.md)"),
       includeChapters: includeChaptersSchema,
-      includeFrontMatter: z.boolean().optional().default(true).describe("Include front matter"),
+      includeFrontMatter: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe("Include the title block and the front and back matter (default: true)"),
     },
     async ({ outputPath, includeChapters, includeFrontMatter }) => {
       const registry = getRegistry();
@@ -36,20 +40,8 @@ export function registerExportTools(server: McpServer): void {
 
       const outPath = outputPath || path.join(projectDir(), "manuscript.md");
       const chapters = selectChapters(registry, includeChapters);
-
-      let markdown = "";
-
-      if (includeFrontMatter) {
-        markdown += `# ${registry.title}\n\n`;
-        markdown += `**By ${registry.author}**\n\n`;
-        markdown += `*${registry.genre}*\n\n---\n\n`;
-      }
-
-      for (const chapter of chapters) {
-        const content = readChapterFile(chapter.filename);
-        markdown += content;
-        markdown += "\n\n---\n\n";
-      }
+      const book = assembleBook(registry, chapters, { includeMatter: includeFrontMatter });
+      const markdown = bookToMarkdown(book, { titleBlock: includeFrontMatter });
 
       fs.writeFileSync(outPath, markdown, "utf-8");
 
@@ -62,8 +54,12 @@ export function registerExportTools(server: McpServer): void {
                 message: "Manuscript exported to markdown.",
                 outputPath: outPath,
                 wordCount: countWords(markdown),
-                chaptersIncluded: chapters.length,
+                chaptersIncluded: book.chapterCount,
                 selection: describeSelection(registry, includeChapters, chapters),
+                ...(book.front.length || book.back.length
+                  ? { matter: [...book.front, ...book.back].map((m) => m.navTitle) }
+                  : {}),
+                ...(book.warnings.length ? { warnings: book.warnings } : {}),
               },
               null,
               2
@@ -76,7 +72,7 @@ export function registerExportTools(server: McpServer): void {
 
   server.tool(
     "book_export_docx",
-    "Compile the manuscript into a formatted .docx file: title page, table of contents, every chapter on a new page, and the chapter markdown turned into real Word formatting (italic, bold, headings, scene breaks, block quotes).",
+    "Compile the manuscript into a formatted .docx file: title page, front matter, table of contents, part pages, every chapter on a new page (numbered when set), back matter — and the chapter markdown turned into real Word formatting (italic, bold, headings, scene breaks, block quotes).",
     {
       outputPath: z.string().optional().describe("Output file path (default: ./manuscript.docx)"),
       includeChapters: includeChaptersSchema,
@@ -102,32 +98,12 @@ export function registerExportTools(server: McpServer): void {
       const outPath = outputPath || path.join(projectDir(), "manuscript.docx");
       const selected = selectChapters(registry, includeChapters);
 
-      const warnings: string[] = [];
-      const chapters = selected.flatMap((chapter) => {
-        const markdown = readChapterFile(chapter.filename);
-        if (!markdown.trim()) {
-          warnings.push(
-            `Chapter "${chapter.title}" (${chapter.filename}) is missing or empty on disk and was skipped.`
-          );
-          return [];
-        }
-        return [{ title: chapter.title, order: chapter.order, markdown }];
-      });
-
-      if (chapters.length === 0) {
+      const book = assembleBook(registry, selected);
+      if (book.chapterCount === 0) {
         throw new BookMCPError("No chapters to export.");
       }
 
-      const language = projectLanguage().tag;
-      const labels = labelsFor(language);
-      const buffer = await buildDocx({
-        title: registry.title,
-        subtitle: getMetadata()?.subtitle,
-        author: registry.author,
-        language,
-        contentsLabel: labels.contents,
-        byLabel: labels.by,
-        chapters,
+      const buffer = await buildDocx(book, {
         fontFamily,
         fontSize,
         lineSpacing,
@@ -136,7 +112,11 @@ export function registerExportTools(server: McpServer): void {
       });
       fs.writeFileSync(outPath, buffer);
 
-      const totalWords = chapters.reduce((sum, c) => sum + countWords(c.markdown), 0);
+      const totalWords = book.body.reduce(
+        (sum, item) => sum + (item.kind === "chapter" ? countWords(item.body) + countWords(item.heading) : 0),
+        0
+      );
+      const warnings = book.warnings;
 
       return {
         content: [
@@ -147,8 +127,11 @@ export function registerExportTools(server: McpServer): void {
                 message: "Manuscript exported to .docx.",
                 outputPath: outPath,
                 wordCount: totalWords,
-                chaptersIncluded: chapters.length,
+                chaptersIncluded: book.chapterCount,
                 selection: describeSelection(registry, includeChapters, selected),
+                ...(book.front.length || book.back.length
+                  ? { matter: [...book.front, ...book.back].map((m) => m.navTitle) }
+                  : {}),
                 estimatedPages: Math.ceil(totalWords / 250),
                 settings: { fontFamily, fontSize, lineSpacing },
                 ...(warnings.length ? { warnings } : {}),

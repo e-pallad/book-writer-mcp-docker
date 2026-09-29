@@ -14,35 +14,17 @@ import {
   Paragraph,
   TextRun,
 } from "docx";
-import { Block, inlineRuns, parseBlocks, stripLeadingHeading } from "../utils/markdown";
+import { Block, inlineRuns, parseBlocks } from "../utils/markdown";
+import { AssembledBook, chapterEntry, partEntry } from "./assemble";
+import { RenderedMatter } from "./matter";
 
-export interface DocxChapter {
-  title: string;
-  /** Position in the book, for the table of contents. */
-  order: number;
-  markdown: string;
-}
-
-export interface DocxOptions {
-  title: string;
-  subtitle?: string;
-  author: string;
-  chapters: DocxChapter[];
+export interface DocxLayout {
   fontFamily: string;
   /** Points. */
   fontSize: number;
   lineSpacing: "single" | "double";
   includeTableOfContents: boolean;
   includePageNumbers: boolean;
-  /** Heading of the contents page. */
-  contentsLabel?: string;
-  /** Word before the author's name on the title page. */
-  byLabel?: string;
-  /**
-   * BCP 47 tag the text is marked with, so Word spell-checks and hyphenates it
-   * in the right language rather than the reader's default.
-   */
-  language?: string;
 }
 
 // Word measures in twentieths of a point ("twips"): 1440 to the inch.
@@ -150,10 +132,47 @@ function wordLanguage(tag: string): string {
   return DEFAULT_REGIONS[lower] ? `${lower}-${DEFAULT_REGIONS[lower]}` : lower;
 }
 
-export async function buildDocx(options: DocxOptions): Promise<Buffer> {
-  const line = options.lineSpacing === "double" ? 480 : 240;
-  const halfPoints = options.fontSize * 2;
-  const headingRun = { font: options.fontFamily, bold: true, color: "000000" };
+/** A page of its own for a piece of front or back matter. */
+function matterParagraphs(section: RenderedMatter, line: number): Paragraph[] {
+  const blocks = parseBlocks(section.markdown);
+  if (section.heading) {
+    return [
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        pageBreakBefore: true,
+        spacing: { before: 2000, after: 400 },
+        children: runs(section.heading),
+      }),
+      ...chapterBody(blocks, line),
+    ];
+  }
+
+  // A dedication is centred a third of the way down; an epigraph set in from
+  // both sides; the copyright page plain. None has a heading.
+  const texts = blocks.flatMap((b) =>
+    b.type === "blockquote" ? quotedTexts(b.blocks) : b.type === "sceneBreak" ? [] : [b.text]
+  );
+  return texts.map(
+    (text, index) =>
+      new Paragraph({
+        ...(index === 0 ? { pageBreakBefore: true } : {}),
+        ...(section.type === "dedication"
+          ? { alignment: AlignmentType.CENTER, spacing: { before: index === 0 ? 3000 : 0, after: 120 } }
+          : section.type === "epigraph"
+          ? {
+              indent: { left: QUOTE_INDENT * 2, right: QUOTE_INDENT },
+              spacing: { before: index === 0 ? 3000 : 0, after: 120 },
+            }
+          : { spacing: { after: 200 } }),
+        children: runs(text),
+      })
+  );
+}
+
+export async function buildDocx(book: AssembledBook, layout: DocxLayout): Promise<Buffer> {
+  const line = layout.lineSpacing === "double" ? 480 : 240;
+  const halfPoints = layout.fontSize * 2;
+  const headingRun = { font: layout.fontFamily, bold: true, color: "000000" };
 
   const children: Paragraph[] = [];
 
@@ -162,14 +181,14 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 4000 },
-      children: [new TextRun({ text: options.title, bold: true, size: halfPoints + 16 })],
+      children: [new TextRun({ text: book.title, bold: true, size: halfPoints + 16 })],
     }),
-    ...(options.subtitle
+    ...(book.subtitle
       ? [
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { before: 240 },
-            children: [new TextRun({ text: options.subtitle, size: halfPoints + 6 })],
+            children: [new TextRun({ text: book.subtitle, size: halfPoints + 6 })],
           }),
         ]
       : []),
@@ -178,55 +197,115 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
       spacing: { before: 400 },
       children: [
         new TextRun({
-          text: `${options.byLabel ?? "by"} ${options.author}`,
+          text: `${book.labels.by} ${book.author}`,
           size: halfPoints + 4,
         }),
       ],
     })
   );
 
-  if (options.includeTableOfContents) {
+  for (const section of book.front.filter((s) => s.beforeContents)) {
+    children.push(...matterParagraphs(section, line));
+  }
+
+  if (layout.includeTableOfContents) {
     children.push(
       new Paragraph({
         heading: HeadingLevel.HEADING_1,
         pageBreakBefore: true,
-        children: [new TextRun(options.contentsLabel ?? "Table of Contents")],
+        children: [new TextRun(book.labels.contents)],
       })
     );
-    for (const chapter of options.chapters) {
-      children.push(
-        new Paragraph({
-          spacing: { line },
-          children: [new TextRun(`${chapter.order}. ${chapter.title}`)],
-        })
-      );
+    const entry = (text: string, indent = false) =>
+      new Paragraph({
+        spacing: { line },
+        ...(indent ? { indent: { left: QUOTE_INDENT } } : {}),
+        children: runs(text),
+      });
+    for (const section of book.front.filter((s) => !s.beforeContents && s.heading)) {
+      children.push(entry(section.navTitle));
+    }
+    const inParts = book.body.some((item) => item.kind === "part");
+    let insidePart = false;
+    for (const item of book.body) {
+      if (item.kind === "part") {
+        children.push(entry(partEntry(item)));
+        insidePart = true;
+      } else {
+        children.push(entry(chapterEntry(item), inParts && insidePart && Boolean(item.chapter.part)));
+      }
+    }
+    for (const section of book.back.filter((s) => s.heading)) {
+      children.push(entry(section.navTitle));
     }
   }
 
-  for (const chapter of options.chapters) {
-    // The chapter's own "# Title" line is replaced by the registry title,
-    // which is the one a rename keeps current.
+  for (const section of book.front.filter((s) => !s.beforeContents)) {
+    children.push(...matterParagraphs(section, line));
+  }
+
+  for (const item of book.body) {
+    if (item.kind === "part") {
+      // A part page: the label and the title, centred, alone on the page.
+      children.push(
+        ...(item.label
+          ? [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                pageBreakBefore: true,
+                spacing: { before: 4000, after: 240 },
+                children: [new TextRun({ text: item.label, size: halfPoints + 4 })],
+              }),
+            ]
+          : []),
+        new Paragraph({
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          ...(item.label ? {} : { pageBreakBefore: true, spacing: { before: 4000 } }),
+          children: runs(item.title),
+        })
+      );
+      continue;
+    }
+
+    // The chapter's number above its title, the page break on whichever
+    // comes first.
+    if (item.label) {
+      children.push(
+        new Paragraph({
+          pageBreakBefore: true,
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 1600, after: 120 },
+          children: [new TextRun({ text: item.label })],
+        })
+      );
+    }
     children.push(
       new Paragraph({
         heading: HeadingLevel.HEADING_1,
-        pageBreakBefore: true,
-        spacing: { before: 2000, after: 400 },
-        children: runs(chapter.title),
+        ...(item.label
+          ? { alignment: AlignmentType.CENTER, spacing: { after: 400 } }
+          : { pageBreakBefore: true, spacing: { before: 2000, after: 400 } }),
+        children: runs(item.heading),
       })
     );
-    children.push(...chapterBody(parseBlocks(stripLeadingHeading(chapter.markdown)), line));
+    children.push(...chapterBody(parseBlocks(item.body), line));
+  }
+
+  for (const section of book.back) {
+    children.push(...matterParagraphs(section, line));
   }
 
   const doc = new Document({
-    creator: options.author,
-    title: options.title,
+    creator: book.author,
+    title: book.title,
     styles: {
       default: {
         document: {
           run: {
-            font: options.fontFamily,
+            font: layout.fontFamily,
             size: halfPoints,
-            ...(options.language ? { language: { value: wordLanguage(options.language) } } : {}),
+            language: { value: wordLanguage(book.language) },
           },
         },
         // Word's built-in heading styles are blue sans-serif; a manuscript's
@@ -248,7 +327,7 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
     },
     sections: [
       {
-        footers: options.includePageNumbers
+        footers: layout.includePageNumbers
           ? {
               default: new Footer({
                 children: [

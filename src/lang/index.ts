@@ -5,15 +5,13 @@ import { getRegistry } from "../storage/filestore";
 import { de } from "./de";
 import { en } from "./en";
 import { Labels, LanguageRules } from "./types";
+import { de as deLabels, en as enLabels } from "./labels";
 
-export type { LanguageRules, Labels, DayPart } from "./types";
+export type { LanguageRules, Labels, DayPart, MatterLabelKey } from "./types";
 
 const RULES: Record<string, LanguageRules> = { en, de };
 
-const LABELS: Record<string, Labels> = {
-  en: { contents: "Contents", by: "by", titlePage: "Title page", beginning: "Beginning" },
-  de: { contents: "Inhalt", by: "von", titlePage: "Titelseite", beginning: "Beginn" },
-};
+const LABELS: Record<string, Labels> = { en: enLabels, de: deLabels };
 
 /** The language a project had before it could have one: its checks were English. */
 export const LEGACY_LANGUAGE = "en";
