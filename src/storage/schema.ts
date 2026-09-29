@@ -381,3 +381,29 @@ export interface MatterSection {
 export interface Matter {
   sections: MatterSection[];
 }
+
+/** A reader's or editor's note on a chapter, anchored to a passage. */
+export interface Note {
+  id: string;
+  chapterId: string;
+  /**
+   * The passage the note is about, verbatim. Found again in the chapter each
+   * time the note is read, so revising the text around it does not move it.
+   * Empty for a note on the chapter as a whole.
+   */
+  anchorText: string;
+  /** Where the passage was when the note was made — tells repeats apart. */
+  paragraphHint?: number;
+  /** Who said it: "Testleserin A", "Lektorat", "the author". */
+  source: string;
+  kind: "comment" | "question" | "suggestion" | "praise";
+  text: string;
+  status: "open" | "resolved";
+  resolution?: string;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export interface Notes {
+  notes: Note[];
+}

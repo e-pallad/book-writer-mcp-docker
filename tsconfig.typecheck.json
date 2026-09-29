@@ -15,6 +15,7 @@
     "src/export/**/*",
     "src/lang/**/*",
     "src/publishing/**/*",
+    "src/notes/**/*",
     "src/tools/style-rules.ts",
     "src/tools/continuity-rules.ts",
     "src/tools/voice.ts",

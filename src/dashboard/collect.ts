@@ -8,6 +8,7 @@ import {
   getAiDisclosure,
   getWritingLog,
   getMetadata,
+  getNotes,
   readChapterFile,
 } from "../storage/filestore";
 import { missingMetadata } from "../publishing/metadata";
@@ -414,6 +415,26 @@ function buildHealth(
       detail: stale
         .map((c) => `${c.title} (${daysBetween(c.updatedAt, now)}d)`)
         .join(", "),
+    });
+  }
+
+  // Feedback from test readers and the editor still waiting for an answer.
+  const openNotes = (getNotes()?.notes ?? []).filter(
+    (n) => n.status === "open" && chapters.some((c) => c.id === n.chapterId)
+  );
+  if (openNotes.length) {
+    const byChapter = new Map<string, number>();
+    for (const note of openNotes) byChapter.set(note.chapterId, (byChapter.get(note.chapterId) ?? 0) + 1);
+    const inFinal = openNotes.filter(
+      (n) => chapters.find((c) => c.id === n.chapterId)?.status === "final"
+    ).length;
+    findings.push({
+      severity: inFinal ? "serious" : "warning",
+      area: "feedback",
+      summary: `${openNotes.length} open note(s) from ${[...new Set(openNotes.map((n) => n.source))].join(", ")}`,
+      detail: `${[...byChapter]
+        .map(([id, n]) => `${chapters.find((c) => c.id === id)?.title ?? id} (${n})`)
+        .join(", ")}${inFinal ? `. ${inFinal} of them on chapters already marked final.` : "."}`,
     });
   }
 

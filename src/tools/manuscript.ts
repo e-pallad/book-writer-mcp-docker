@@ -7,6 +7,7 @@ import {
   updateOutlineIfPresent,
   getStoryBible,
   getOutline,
+  getNotes,
   initProject,
   readChapterFile,
   writeChapterFile,
@@ -138,6 +139,14 @@ function findReferences(chapter: ChapterMeta): string[] {
         );
       }
     }
+  }
+
+  const notes = (getNotes()?.notes ?? []).filter((n) => n.chapterId === chapter.id);
+  if (notes.length) {
+    const open = notes.filter((n) => n.status === "open").length;
+    references.push(
+      `${notes.length} note(s) on this chapter (${open} open) now point at a deleted chapter.`
+    );
   }
 
   const outline = getOutline();
@@ -519,6 +528,21 @@ export function registerManuscriptTools(server: McpServer): void {
         }
         chapter.updatedAt = new Date().toISOString();
       });
+
+      // Marking a chapter final with feedback still open on it is allowed —
+      // the author decides — but never silent.
+      if (status === "final") {
+        const open = (getNotes()?.notes ?? []).filter(
+          (n) => n.chapterId === chapter.id && n.status === "open"
+        );
+        if (open.length) {
+          warnings.push(
+            `${open.length} open note(s) on this chapter (${[...new Set(open.map((n) => n.source))].join(
+              ", "
+            )}). See them with book_note_list chapterId="${chapter.id}".`
+          );
+        }
+      }
 
       return jsonResult({
         message: `Chapter "${chapter.title}" updated.`,

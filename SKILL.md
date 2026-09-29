@@ -87,6 +87,13 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 3. Act on the health findings before drafting more: an open thread or a timeline
    contradiction is cheaper to fix now than after another ten chapters
 
+## Workflow for Feedback from Test Readers or the Editor
+1. `book_note_add` for each remark, with `source` (who said it), `kind` and the
+   exact `anchorText` it is about — never paraphrase the anchor
+2. `book_note_list` to work through them chapter by chapter
+3. Revise, then `book_note_resolve resolution="..."` — say what was done
+- A note reported as lost points at text that was cut; check it still applies
+
 ## Workflow for Front and Back Matter
 - `book_matter_set type=copyright` (no content: written from the metadata),
   `type=dedication content=...`, `type=epigraph content="> ..."`,

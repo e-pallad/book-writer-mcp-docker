@@ -13,6 +13,7 @@ import {
   WritingLog,
   PublishingMetadata,
   Matter,
+  Notes,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
@@ -306,6 +307,27 @@ export function updateMatter(
   });
 }
 
+// Reader and editor notes
+export function getNotes(): Notes | null {
+  return readJSON<Notes>(mcpPath("notes.json"));
+}
+
+export function saveNotes(notes: Notes): void {
+  writeJSON(mcpPath("notes.json"), notes);
+}
+
+/** Amends the notes, creating the file on first use. */
+export function updateNotes(
+  mutate: (notes: Notes) => unknown | Promise<unknown>
+): Promise<Notes> {
+  return withFileLock(mcpPath("notes.json"), async () => {
+    const notes = getNotes() ?? { notes: [] };
+    const outcome = await mutate(notes);
+    if (outcome !== ABORT) saveNotes(notes);
+    return notes;
+  });
+}
+
 // AI content disclosure
 export function getAiDisclosure(): AiDisclosure | null {
   return readJSON<AiDisclosure>(mcpPath("ai-disclosure.json"));
@@ -557,5 +579,6 @@ export function getProjectPaths() {
     writingLogPath: mcpPath("writing-log.json"),
     metadataPath: mcpPath("metadata.json"),
     matterPath: mcpPath("matter.json"),
+    notesPath: mcpPath("notes.json"),
   };
 }

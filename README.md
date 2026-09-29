@@ -250,6 +250,15 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_style_list_influences` | List author influences |
 | `book_style_remove_influence` | Remove an author influence |
 
+### Reader and Editor Notes
+
+| Tool | What it does |
+|------|-------------|
+| `book_note_add` | Record a note from a test reader, the editor or the author, anchored to a passage |
+| `book_note_list` | Open (or resolved) notes, with where each passage is now |
+| `book_note_resolve` | Mark a note dealt with, and how — or reopen it |
+| `book_note_delete` | Delete a note recorded by mistake |
+
 ### Front & Back Matter
 
 | Tool | What it does |
@@ -646,6 +655,32 @@ chapter exactly as before.
 book_chapter_read chapterId="ch-003" fromParagraph=12 toParagraph=14
 ```
 
+## Notes from Test Readers and the Editor
+
+Between the draft and the finished book stand test readers and an editor, and
+their feedback — *why does she already know this here?*, *this scene drags* —
+belongs next to the passage it is about, not in a chat history.
+
+```
+book_note_add chapterId="Der Kai" anchorText="Sie wusste schon, wer der Tote war." \
+              text="Woher weiß sie das an dieser Stelle schon?" source="Testleserin A" kind="question"
+book_note_list status="open"
+book_note_resolve noteId="note-…" resolution="Hinweis in Kapitel 2 eingebaut."
+```
+
+A note is anchored to the **words** it is about, not to a position. Each time
+notes are listed the passage is found again, so a paragraph added above it
+moves the note with it; a passage that occurs twice is told apart by the
+paragraph it was in when the note was made. If a revision cuts the passage,
+the note is reported as **lost** — with the paragraph it used to be in — rather
+than shown next to the wrong text. A note can also be pinned to a whole
+paragraph (`paragraph=3`) or to the chapter as a whole.
+
+Open notes are not forgotten: `book_chapter_update status="final"` warns when a
+chapter still has some (the author still decides), the dashboard lists them
+under *feedback* — as serious when they sit on a chapter already marked final —
+and deleting a chapter reports the notes it leaves behind.
+
 ## Chapter Version History
 
 Every `book_chapter_update` that changes the prose files the previous text away
@@ -773,6 +808,7 @@ your-book/
     writing-log.json    # Words added and cut per day
     metadata.json       # Publishing metadata: subtitle, series, ISBNs, keywords…
     matter.json         # Front and back matter
+    notes.json          # Notes from test readers and the editor
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
