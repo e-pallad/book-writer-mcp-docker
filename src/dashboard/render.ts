@@ -443,6 +443,40 @@ function velocityPanel(data: DashboardData): string {
   );
 }
 
+function scenesPanel(data: DashboardData): string {
+  const { scenes } = data;
+  if (scenes.described === 0) {
+    return card(
+      "Scenes and point of view",
+      "Whose eyes the book is seen through.",
+      `<p class="empty">${scenes.total} scene(s), none described yet. Note each scene's point of view with book_scene_set to see how the book is shared between its narrators.</p>`
+    );
+  }
+  const max = Math.max(...scenes.pointOfView.map((p) => p.words), 1);
+  const rows = scenes.pointOfView
+    .map(
+      (p) => `<tr>
+      <td class="c-title">${escapeHtml(p.character)}</td>
+      <td class="num">${p.scenes}</td>
+      <td class="num">${p.words.toLocaleString("en-US")}</td>
+      <td class="barcell"><span class="bar" style="width:${Math.max(2, (p.words / max) * 260)}px" title="${p.share}%"></span></td>
+      <td class="num">${p.share}%</td>
+    </tr>`
+    )
+    .join("");
+  return card(
+    "Scenes and point of view",
+    `${scenes.total} scene(s), ${scenes.described} described. Words per point-of-view character.`,
+    `<table class="chapters">
+      <thead><tr>
+        <th scope="col">Point of view</th><th scope="col">Scenes</th><th scope="col">Words</th>
+        <th scope="col"><span class="visually-hidden">Share</span></th><th scope="col">Share</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`
+  );
+}
+
 function healthPanel(data: DashboardData): string {
   const rows = data.health
     .map(
@@ -669,6 +703,7 @@ td.num, th[scope="col"].num { text-align: right; font-variant-numeric: tabular-n
   ${timelinePanel(data)}
   ${chaptersPanel(data)}
   ${velocityPanel(data)}
+  ${scenesPanel(data)}
   <div class="grid-2">
     ${healthPanel(data)}
     ${readinessPanel(data)}

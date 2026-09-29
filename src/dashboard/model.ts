@@ -77,7 +77,7 @@ export interface Velocity {
 
 export interface HealthFinding {
   severity: "good" | "warning" | "serious" | "critical";
-  area: "plot" | "timeline" | "voice" | "style" | "pace";
+  area: "plot" | "timeline" | "voice" | "style" | "pace" | "feedback" | "draft" | "structure";
   summary: string;
   detail: string;
 }
@@ -88,6 +88,15 @@ export interface ReadinessItem {
   detail: string;
 }
 
+export interface SceneSummary {
+  total: number;
+  /** Scenes with anything noted about them. */
+  described: number;
+  pointOfView: { character: string; scenes: number; words: number; share: number }[];
+  /** Scene notes whose scene's opening was rewritten or cut. */
+  lost: number;
+}
+
 export interface DashboardData {
   generatedAt: string;
   overview: DashboardOverview;
@@ -95,6 +104,7 @@ export interface DashboardData {
   presence: PresenceMatrix;
   timeline: TimelineMap;
   velocity: Velocity;
+  scenes: SceneSummary;
   health: HealthFinding[];
   readiness: ReadinessItem[];
   notes: string[];

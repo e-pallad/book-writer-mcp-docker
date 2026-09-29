@@ -3,6 +3,34 @@ export interface Registry {
   author: string;
   genre: string;
   targetWordCount: number;
+  /**
+   * BCP 47 tag of the language the book is written in ("de", "en-GB"). Picks
+   * the rules the style and continuity checks use, and the language exports
+   * declare. Absent in projects created before it existed, which are treated
+   * as English — the only language their checks ever knew.
+   */
+  language?: string;
+  /**
+   * Which revision of the word counter produced the chapters' wordCount. The
+   * counter stopped counting markup as words; a registry from before that is
+   * recounted the next time it is written.
+   */
+  countVersion?: number;
+  /**
+   * How chapters are numbered in the exports: not at all (the title alone,
+   * the default), "Kapitel 3", or "Drittes Kapitel".
+   */
+  chapterNumbering?: "none" | "numeric" | "words";
+  /** Words a day the author aims for; 0 or absent for no goal. */
+  dailyWordGoal?: number;
+  /** YYYY-MM-DD the draft is due. */
+  deadline?: string;
+  /**
+   * IANA time zone that decides where one writing day ends and the next
+   * begins ("Europe/Berlin"). A container runs in UTC, so without this a late
+   * evening session in Berlin would count towards tomorrow.
+   */
+  timezone?: string;
   createdAt: string;
   updatedAt: string;
   chapters: ChapterMeta[];
@@ -34,12 +62,35 @@ export interface ChapterMeta {
   order: number;
   synopsis: string;
   updatedAt: string;
+  /**
+   * The part of the book the chapter belongs to ("Die Stadt"). Consecutive
+   * chapters with the same part share one part page in the exports.
+   */
+  part?: string;
+  /**
+   * False for a chapter that carries no number — a prologue, an epilogue —
+   * so the chapters after it are numbered from where they would be.
+   */
+  numbered?: boolean;
+  /** Revision passes done on this chapter, in the order they were marked. */
+  passes?: { pass: RevisionPass; at: string; note?: string }[];
 }
+
+/**
+ * The classic passes of a revision, from the large to the small: structure,
+ * then scene and line, then copy, then the final proof.
+ */
+export type RevisionPass = "structural" | "line" | "copy" | "proof";
 
 export interface StoryBible {
   characters: Character[];
   settings: Setting[];
-  themes: string[];
+  /**
+   * What the book is about underneath the plot. Older projects hold bare
+   * strings here (nothing wrote to the field before the theme tools existed,
+   * but a hand-edited file might); readers normalise them with normaliseThemes.
+   */
+  themes: (Theme | string)[];
   plotThreads: PlotThread[];
   /**
    * Where the timeline lives, rather than the timeline itself. Events point at
@@ -72,6 +123,23 @@ export interface Character {
    * Optional: most characters do not need one.
    */
   voiceProfile?: VoiceProfile;
+  /** How the character changes across the book. Optional. */
+  arc?: CharacterArc;
+}
+
+/**
+ * A character's arc, in the terms most craft books use: what they want, what
+ * they actually need, the wound behind the lie they believe, and whether they
+ * change for the better, for the worse, or stay true while changing others.
+ */
+export interface CharacterArc {
+  want?: string;
+  need?: string;
+  wound?: string;
+  lie?: string;
+  arcType?: "positive" | "negative" | "flat";
+  /** Where the arc moves: a chapter and what shifts there. */
+  milestones?: { chapterId: string; note: string }[];
 }
 
 export interface VoiceProfile {
@@ -98,13 +166,28 @@ export interface Setting {
   notes: string;
 }
 
+export interface Theme {
+  name: string;
+  description: string;
+}
+
 export interface PlotThread {
   id: string;
   title: string;
-  status: "open" | "resolved";
+  /** "abandoned" is a thread the author chose to drop, as opposed to forgot. */
+  status: "open" | "resolved" | "abandoned";
   openedIn: string;
   resolvedIn?: string;
   summary: string;
+  /**
+   * Words that show the thread is being carried in a chapter — a name, an
+   * object, a place — besides its title, which rarely appears in prose.
+   */
+  keywords?: string[];
+  /** Chapters the author has said carry the thread forward, named or not. */
+  touches?: { chapterId: string; note: string; at: string }[];
+  /** Why the thread was dropped. */
+  abandonedReason?: string;
 }
 
 /** The shape story-bible.json used before timeline.json existed. */
@@ -210,6 +293,20 @@ export interface SpineSpec {
 
 export interface Outline {
   acts: OutlineAct[];
+  /** The story structure the book follows, and where its turning points fall. */
+  structure?: {
+    template: string;
+    beats: BeatPlacement[];
+  };
+}
+
+export interface BeatPlacement {
+  /** A beat id from the template ("midpoint"). */
+  beat: string;
+  chapterId: string;
+  /** The scene within the chapter, when the beat is that precise. */
+  scene?: number;
+  note?: string;
 }
 
 export interface OutlineAct {
@@ -221,6 +318,12 @@ export interface OutlineChapter {
   title: string;
   synopsis: string;
   scenes?: string[];
+  /**
+   * The manuscript chapter this plan entry became. Without it the entry is
+   * matched by title, which breaks on a hand-edited title or two chapters
+   * sharing one.
+   */
+  chapterId?: string;
 }
 
 export interface AiDisclosure {
@@ -235,4 +338,206 @@ export interface AiDisclosure {
   /** Which reading of Amazon's policy this was recorded against. */
   policyVersion: string;
   policyVerifiedOn: string;
+}
+
+export interface WritingLog {
+  /** When the log began; nothing before this was recorded. */
+  startedAt: string;
+  /** One entry per calendar day in the project's time zone, keyed YYYY-MM-DD. */
+  days: Record<string, WritingDay>;
+}
+
+export interface WritingDay {
+  /** Words gained: each change contributes its growth, if it grew the text. */
+  added: number;
+  /** Words cut: each change contributes its shrinkage, if it shrank the text. */
+  removed: number;
+  /** Net change per chapter id. */
+  chapters: Record<string, number>;
+  /** How many changes were made. */
+  changes: number;
+}
+
+/** What a store, a catalogue and an EPUB reader need to know about the book. */
+export interface PublishingMetadata {
+  subtitle?: string;
+  series?: { name: string; number?: number };
+  /**
+   * The book's description — the blurb on the back cover and the text on the
+   * store page. The one copy: the cover spec and the EPUB read it from here.
+   */
+  description?: string;
+  /** Search keywords or phrases; KDP takes seven. */
+  keywords?: string[];
+  /** Store categories or BISAC/Thema codes; KDP takes three. */
+  categories?: string[];
+  isbn?: { ebook?: string; paperback?: string; hardcover?: string };
+  publisher?: string;
+  /** YYYY-MM-DD. */
+  publicationDate?: string;
+  copyright?: { holder?: string; year?: number };
+  contributors?: { name: string; role: ContributorRole }[];
+  /**
+   * A stable identifier for a book with no ISBN yet, so re-exported drafts
+   * are recognised as the same book by a reader's library.
+   */
+  uuid?: string;
+  updatedAt: string;
+}
+
+export type ContributorRole =
+  | "editor"
+  | "translator"
+  | "illustrator"
+  | "cover_designer"
+  | "foreword"
+  | "other";
+
+/** Front and back matter: everything in a book that is not a chapter. */
+export type MatterType =
+  | "copyright"
+  | "dedication"
+  | "epigraph"
+  | "foreword"
+  | "preface"
+  | "dramatis_personae"
+  | "afterword"
+  | "acknowledgements"
+  | "glossary"
+  | "bibliography"
+  | "about_author"
+  | "also_by";
+
+export interface MatterSection {
+  type: MatterType;
+  /**
+   * Markdown. Empty for a section written at export time from the project's
+   * own data — the copyright page from the metadata, the cast from the story
+   * bible, the author's bio from their profile.
+   */
+  content: string;
+  /** Heading override; the language's default otherwise. */
+  title?: string;
+  /** Moves a section to the other end of the book (a cast list at the back). */
+  position?: "front" | "back";
+  updatedAt: string;
+}
+
+export interface Matter {
+  sections: MatterSection[];
+}
+
+/** A reader's or editor's note on a chapter, anchored to a passage. */
+export interface Note {
+  id: string;
+  chapterId: string;
+  /**
+   * The passage the note is about, verbatim. Found again in the chapter each
+   * time the note is read, so revising the text around it does not move it.
+   * Empty for a note on the chapter as a whole.
+   */
+  anchorText: string;
+  /** Where the passage was when the note was made — tells repeats apart. */
+  paragraphHint?: number;
+  /** Who said it: "Testleserin A", "Lektorat", "the author". */
+  source: string;
+  kind: "comment" | "question" | "suggestion" | "praise";
+  text: string;
+  status: "open" | "resolved";
+  resolution?: string;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export interface Notes {
+  notes: Note[];
+}
+
+/**
+ * What the author knows about one scene. Scenes are not stored — they are the
+ * stretches of a chapter between scene breaks — so their metadata is anchored
+ * to the scene's opening words and matched up again on every read.
+ */
+export interface SceneMeta {
+  chapterId: string;
+  /** The scene's first words, whitespace collapsed. */
+  anchor: string;
+  /** The scene's number when last set, to tell apart scenes that open alike. */
+  indexHint: number;
+  /** Character id of the point-of-view character. */
+  pov?: string;
+  setting?: string;
+  /** Setting id, when the setting is one the story bible knows. */
+  settingId?: string;
+  /** When it happens, in the story's own terms. */
+  time?: string;
+  /** What the point-of-view character wants in the scene. */
+  goal?: string;
+  /** What stands in the way. */
+  conflict?: string;
+  /** How it ends for them: the turn that leads into the next scene. */
+  outcome?: string;
+  summary?: string;
+  updatedAt: string;
+}
+
+export interface Scenes {
+  scenes: SceneMeta[];
+}
+
+/** What the book is, before it is anything else — the basis of an exposé. */
+export interface Concept {
+  bookType?: "fiction" | "nonfiction";
+  /** The situation the book grows from: who wants what, and what is in the way. */
+  premise?: string;
+  /** The book in one sentence. */
+  logline?: string;
+  /** The question the reader keeps turning pages to have answered. */
+  centralQuestion?: string;
+  targetAudience?: string;
+  comparableTitles?: { title: string; author: string; year?: number; why?: string }[];
+  /** What this book has that the comparable titles do not. */
+  uniqueSellingPoint?: string;
+  /** Non-fiction: the claim the book makes. */
+  coreThesis?: string;
+  /** Non-fiction: what the reader will know or be able to do afterwards. */
+  readerPromise?: string;
+  updatedAt: string;
+}
+
+/**
+ * The copy-editor's style sheet: which spelling the book uses where more than
+ * one is correct ("E-Mail", not "Email"), so the whole manuscript agrees.
+ */
+export interface Stylesheet {
+  entries: StylesheetEntry[];
+}
+
+export interface StylesheetEntry {
+  preferred: string;
+  variants: string[];
+  note?: string;
+  /** Default true: "email" and "Email" are different variants. */
+  caseSensitive?: boolean;
+}
+
+/** A fact, a source, a note from research — kept where the book can find it. */
+export interface ResearchEntry {
+  id: string;
+  title: string;
+  content: string;
+  /** The citation as it should appear in a bibliography. */
+  source?: string;
+  url?: string;
+  tags: string[];
+  /** Chapters the entry is used in. */
+  chapterIds: string[];
+  /** Listed in the book's bibliography. */
+  bibliography: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Research {
+  entries: ResearchEntry[];
 }

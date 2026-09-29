@@ -10,10 +10,19 @@ import {
   AuthorProfile,
   Timeline,
   AiDisclosure,
+  WritingLog,
+  PublishingMetadata,
+  Matter,
+  Notes,
+  Scenes,
+  Concept,
+  Stylesheet,
+  Research,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
 import { withFileLock } from "./lock";
+import { countWords, WORD_COUNT_VERSION } from "../utils/wordcount";
 
 const MCP_DIR = ".book-mcp";
 const CHAPTERS_DIR = "chapters";
@@ -78,7 +87,8 @@ export function initProject(
   title: string,
   author: string,
   genre: string,
-  targetWordCount: number
+  targetWordCount: number,
+  language = "en"
 ): Registry {
   ensureDir(mcpPath());
   ensureDir(chaptersPath());
@@ -88,6 +98,8 @@ export function initProject(
     author,
     genre,
     targetWordCount,
+    language,
+    countVersion: WORD_COUNT_VERSION,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     chapters: [],
@@ -242,6 +254,155 @@ export function updateTimeline(
   });
 }
 
+// Writing log
+//
+// Written only while registry.json is held: every change to chapter text runs
+// inside a registry transaction, and so does every entry here. That lock is
+// what serialises it, so it takes none of its own — and must never be written
+// from outside a registry transaction.
+export function getWritingLog(): WritingLog | null {
+  return readJSON<WritingLog>(mcpPath("writing-log.json"));
+}
+
+export function saveWritingLog(log: WritingLog): void {
+  writeJSON(mcpPath("writing-log.json"), log);
+}
+
+// Publishing metadata
+export function getMetadata(): PublishingMetadata | null {
+  return readJSON<PublishingMetadata>(mcpPath("metadata.json"));
+}
+
+export function saveMetadata(metadata: PublishingMetadata): void {
+  metadata.updatedAt = new Date().toISOString();
+  writeJSON(mcpPath("metadata.json"), metadata);
+}
+
+/** Amends the metadata, creating it on first use. */
+export function updateMetadata(
+  mutate: (metadata: PublishingMetadata) => unknown | Promise<unknown>
+): Promise<PublishingMetadata> {
+  return withFileLock(mcpPath("metadata.json"), async () => {
+    const metadata = getMetadata() ?? { updatedAt: new Date().toISOString() };
+    const outcome = await mutate(metadata);
+    if (outcome !== ABORT) saveMetadata(metadata);
+    return metadata;
+  });
+}
+
+// Front and back matter
+export function getMatter(): Matter | null {
+  return readJSON<Matter>(mcpPath("matter.json"));
+}
+
+export function saveMatter(matter: Matter): void {
+  writeJSON(mcpPath("matter.json"), matter);
+}
+
+/** Amends the front and back matter, creating the file on first use. */
+export function updateMatter(
+  mutate: (matter: Matter) => unknown | Promise<unknown>
+): Promise<Matter> {
+  return withFileLock(mcpPath("matter.json"), async () => {
+    const matter = getMatter() ?? { sections: [] };
+    const outcome = await mutate(matter);
+    if (outcome !== ABORT) saveMatter(matter);
+    return matter;
+  });
+}
+
+// Reader and editor notes
+export function getNotes(): Notes | null {
+  return readJSON<Notes>(mcpPath("notes.json"));
+}
+
+export function saveNotes(notes: Notes): void {
+  writeJSON(mcpPath("notes.json"), notes);
+}
+
+/** Amends the notes, creating the file on first use. */
+export function updateNotes(
+  mutate: (notes: Notes) => unknown | Promise<unknown>
+): Promise<Notes> {
+  return withFileLock(mcpPath("notes.json"), async () => {
+    const notes = getNotes() ?? { notes: [] };
+    const outcome = await mutate(notes);
+    if (outcome !== ABORT) saveNotes(notes);
+    return notes;
+  });
+}
+
+// Scene metadata
+export function getScenes(): Scenes | null {
+  return readJSON<Scenes>(mcpPath("scenes.json"));
+}
+
+/** Amends the scene metadata, creating the file on first use. */
+export function updateScenes(
+  mutate: (scenes: Scenes) => unknown | Promise<unknown>
+): Promise<Scenes> {
+  return withFileLock(mcpPath("scenes.json"), async () => {
+    const scenes = getScenes() ?? { scenes: [] };
+    const outcome = await mutate(scenes);
+    if (outcome !== ABORT) writeJSON(mcpPath("scenes.json"), scenes);
+    return scenes;
+  });
+}
+
+// Concept
+export function getConcept(): Concept | null {
+  return readJSON<Concept>(mcpPath("concept.json"));
+}
+
+/** Amends the concept, creating it on first use. */
+export function updateConcept(
+  mutate: (concept: Concept) => unknown | Promise<unknown>
+): Promise<Concept> {
+  return withFileLock(mcpPath("concept.json"), async () => {
+    const concept = getConcept() ?? { updatedAt: "" };
+    const outcome = await mutate(concept);
+    if (outcome !== ABORT) {
+      concept.updatedAt = new Date().toISOString();
+      writeJSON(mcpPath("concept.json"), concept);
+    }
+    return concept;
+  });
+}
+
+// Copy-editing style sheet
+export function getStylesheet(): Stylesheet | null {
+  return readJSON<Stylesheet>(mcpPath("stylesheet.json"));
+}
+
+/** Amends the style sheet, creating it on first use. */
+export function updateStylesheet(
+  mutate: (sheet: Stylesheet) => unknown | Promise<unknown>
+): Promise<Stylesheet> {
+  return withFileLock(mcpPath("stylesheet.json"), async () => {
+    const sheet = getStylesheet() ?? { entries: [] };
+    const outcome = await mutate(sheet);
+    if (outcome !== ABORT) writeJSON(mcpPath("stylesheet.json"), sheet);
+    return sheet;
+  });
+}
+
+// Research
+export function getResearch(): Research | null {
+  return readJSON<Research>(mcpPath("research.json"));
+}
+
+/** Amends the research notes, creating the file on first use. */
+export function updateResearch(
+  mutate: (research: Research) => unknown | Promise<unknown>
+): Promise<Research> {
+  return withFileLock(mcpPath("research.json"), async () => {
+    const research = getResearch() ?? { entries: [] };
+    const outcome = await mutate(research);
+    if (outcome !== ABORT) writeJSON(mcpPath("research.json"), research);
+    return research;
+  });
+}
+
 // AI content disclosure
 export function getAiDisclosure(): AiDisclosure | null {
   return readJSON<AiDisclosure>(mcpPath("ai-disclosure.json"));
@@ -335,8 +496,23 @@ export function updateRegistry(
     getRegistry,
     saveRegistry,
     "No book project found. Run book_init first.",
-    mutate
+    async (registry) => {
+      // A registry counted by an older word counter is recounted as part of
+      // its next write, so figures from the two counters are never mixed.
+      const recounted = recountIfStale(registry);
+      const outcome = await mutate(registry);
+      return outcome === ABORT && recounted ? undefined : outcome;
+    }
   );
+}
+
+function recountIfStale(registry: Registry): boolean {
+  if (registry.countVersion === WORD_COUNT_VERSION) return false;
+  for (const chapter of registry.chapters) {
+    chapter.wordCount = countWords(readChapterFile(chapter.filename));
+  }
+  registry.countVersion = WORD_COUNT_VERSION;
+  return true;
 }
 
 export function updateStoryBible(
@@ -475,5 +651,13 @@ export function getProjectPaths() {
     authorProfilePath: mcpPath("author-profile.json"),
     timelinePath: mcpPath(TIMELINE_FILE),
     aiDisclosurePath: mcpPath("ai-disclosure.json"),
+    writingLogPath: mcpPath("writing-log.json"),
+    metadataPath: mcpPath("metadata.json"),
+    matterPath: mcpPath("matter.json"),
+    notesPath: mcpPath("notes.json"),
+    scenesPath: mcpPath("scenes.json"),
+    conceptPath: mcpPath("concept.json"),
+    stylesheetPath: mcpPath("stylesheet.json"),
+    researchPath: mcpPath("research.json"),
   };
 }

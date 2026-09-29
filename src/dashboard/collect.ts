@@ -6,14 +6,25 @@ import {
   getCoverSpec,
   getAuthorProfile,
   getAiDisclosure,
+  getWritingLog,
+  getMetadata,
+  getNotes,
+  getOutline,
   readChapterFile,
 } from "../storage/filestore";
+import { missingMetadata } from "../publishing/metadata";
+import { findPlaceholders } from "../utils/placeholders";
+import { dayKey, projectTimeZone } from "../storage/writing-log";
+import { totalsByDay } from "../storage/progress";
 import { listSnapshots, readSnapshot } from "../storage/history";
 import { Character, ChapterMeta, Registry } from "../storage/schema";
 import { diffStats } from "../utils/diff";
-import { countWords, estimateReadingTime } from "../utils/wordcount";
+import { countWords, estimateReadingTime, WORD_COUNT_VERSION } from "../utils/wordcount";
 import { wholeWordRegExp } from "../utils/text";
 import { BookMCPError } from "../utils/errors";
+import { lastCarried } from "../tools/continuity-rules";
+import { listScenes } from "../scenes/list";
+import { checkStructure } from "../structure/check";
 import {
   ChapterRow,
   DashboardData,
@@ -173,6 +184,39 @@ function buildTimelineMap(registry: Registry, chapters: ChapterMeta[]): Timeline
  * chapter's word count at time t is the word count of the first snapshot taken
  * after t — and the current text once the snapshots run out.
  */
+/**
+ * The manuscript's word count over time from the writing log, when it covers
+ * at least two days. Exact for every change made through the tools since the
+ * log began — unlike the snapshot reconstruction below, which only sees
+ * prose changes and forgets all but the last 20 per chapter.
+ */
+function velocityFromLog(registry: Registry, totalWords: number, now: Date): Velocity | null {
+  const log = getWritingLog();
+  if (!log) return null;
+  const days = Object.keys(log.days).sort();
+  if (days.length < 2) return null;
+
+  const points = totalsByDay(log, totalWords).map((p) => ({
+    at: `${p.date}T12:00:00.000Z`,
+    totalWords: p.totalWords,
+  }));
+  const today = dayKey(now, projectTimeZone(registry));
+  if (days[days.length - 1] < today) {
+    points.push({ at: `${today}T12:00:00.000Z`, totalWords });
+  }
+
+  const first = days[0];
+  const startTotal = points[0].totalWords - (log.days[first].added - log.days[first].removed);
+  const span = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${first}T00:00:00Z`)) / DAY_MS) + 1;
+  return {
+    series: points,
+    wordsPerDay: span > 0 ? Math.round((totalWords - startTotal) / span) : null,
+    daysCovered: span,
+    projectedFinish: null, // filled in by the caller, which knows the target
+    coverage: `From the writing log, which records every change to a chapter made through the tools since ${first}. Edits made to the files by hand are not in it.`,
+  };
+}
+
 function buildVelocity(chapters: ChapterMeta[], texts: Map<string, string>): Velocity {
   const perChapter = new Map<string, { at: number; words: number }[]>();
   const timestamps = new Set<number>();
@@ -252,18 +296,26 @@ function buildHealth(
   const guide = getStyleGuide();
   const lastOrder = chapters.length ? chapters[chapters.length - 1].order : 0;
 
-  // Plot threads left open, weighted by how near the end of the book they are.
+  // Plot threads left open, weighted by how long they have gone uncarried —
+  // named in the prose, or touched with book_plot_thread_touch.
+  const lastChapter = chapters[chapters.length - 1];
   for (const thread of bible?.plotThreads ?? []) {
     if (thread.status !== "open") continue;
     const openedIn = registry.chapters.find((c) => c.id === thread.openedIn);
-    const since = openedIn ? lastOrder - openedIn.order : 0;
+    const carried =
+      openedIn && lastChapter
+        ? lastCarried(thread, chapters, lastChapter, (c) => texts.get(c.id) ?? "")
+        : null;
+    const since = carried ? lastOrder - carried.order : 0;
     findings.push({
       severity: since >= 8 ? "serious" : "warning",
       area: "plot",
       summary: `Open thread: "${thread.title}"`,
-      detail: openedIn
-        ? `Opened in ${openedIn.id} ("${openedIn.title}") and still unresolved ${since} chapter(s) later.`
-        : `Opened in "${thread.openedIn}", which is no longer in the manuscript.`,
+      detail: !openedIn
+        ? `Opened in "${thread.openedIn}", which is not in the manuscript.`
+        : carried && carried.id !== openedIn.id
+        ? `Opened in ${openedIn.id} ("${openedIn.title}"), last carried in ${carried.id} ("${carried.title}"), ${since} chapter(s) ago.`
+        : `Opened in ${openedIn.id} ("${openedIn.title}") and not carried since, ${since} chapter(s) later.`,
     });
   }
 
@@ -370,6 +422,65 @@ function buildHealth(
     });
   }
 
+  // Turning points far from where the chosen structure expects them.
+  const structure = checkStructure(
+    getOutline(),
+    registry,
+    (c) => texts.get(c.id) ?? "",
+    registry.language ?? "en"
+  );
+  for (const beat of structure?.beats ?? []) {
+    if (beat.verdict !== "early" && beat.verdict !== "late") continue;
+    findings.push({
+      severity: Math.abs(beat.deviation ?? 0) > 0.15 ? "serious" : "warning",
+      area: "structure",
+      summary: `${beat.name} at ${Math.round((beat.actual ?? 0) * 100)}%, expected ~${Math.round(beat.expected * 100)}%`,
+      detail: `Placed in ${beat.chapterId}. ${
+        structure!.basis === "target"
+          ? "Measured against the target length, as the draft is not finished."
+          : "Measured against the manuscript as it stands."
+      }`,
+    });
+  }
+
+  // Placeholders left while drafting: fine in a draft, a problem in a chapter
+  // marked for review or final.
+  const placeholders = chapters
+    .map((c) => ({ chapter: c, count: findPlaceholders(texts.get(c.id) ?? "").length }))
+    .filter((p) => p.count > 0);
+  if (placeholders.length) {
+    const total = placeholders.reduce((sum, p) => sum + p.count, 0);
+    const late = placeholders.filter((p) => p.chapter.status === "review" || p.chapter.status === "final");
+    findings.push({
+      severity: late.length ? "serious" : "warning",
+      area: "draft",
+      summary: `${total} placeholder(s) to fill`,
+      detail: `${placeholders.map((p) => `${p.chapter.title} (${p.count})`).join(", ")}${
+        late.length ? `. ${late.length} chapter(s) with placeholders are marked review or final.` : "."
+      } book_todo_list shows each one.`,
+    });
+  }
+
+  // Feedback from test readers and the editor still waiting for an answer.
+  const openNotes = (getNotes()?.notes ?? []).filter(
+    (n) => n.status === "open" && chapters.some((c) => c.id === n.chapterId)
+  );
+  if (openNotes.length) {
+    const byChapter = new Map<string, number>();
+    for (const note of openNotes) byChapter.set(note.chapterId, (byChapter.get(note.chapterId) ?? 0) + 1);
+    const inFinal = openNotes.filter(
+      (n) => chapters.find((c) => c.id === n.chapterId)?.status === "final"
+    ).length;
+    findings.push({
+      severity: inFinal ? "serious" : "warning",
+      area: "feedback",
+      summary: `${openNotes.length} open note(s) from ${[...new Set(openNotes.map((n) => n.source))].join(", ")}`,
+      detail: `${[...byChapter]
+        .map(([id, n]) => `${chapters.find((c) => c.id === id)?.title ?? id} (${n})`)
+        .join(", ")}${inFinal ? `. ${inFinal} of them on chapters already marked final.` : "."}`,
+    });
+  }
+
   if (findings.length === 0) {
     findings.push({
       severity: "good",
@@ -403,12 +514,36 @@ function buildReadiness(registry: Registry): ReadinessItem[] {
     detail: spec ? "On file." : "Run book_cover_create_spec.",
   });
 
+  const published = getMetadata();
+  const description = published?.description ?? spec?.backCover?.blurb;
   items.push({
-    item: "Back cover blurb",
-    state: spec?.backCover?.blurb ? "ready" : "optional",
-    detail: spec?.backCover?.blurb
+    item: "Description / blurb",
+    state: description ? "ready" : "needed",
+    detail: description
       ? "Written."
-      : "Needed for paperback and hardcover.",
+      : "The store page and the back cover need it. Set it with book_metadata_set.",
+  });
+
+  const missingStore = missingMetadata(published).filter((m) => m.field !== "description");
+  items.push({
+    item: "Keywords and categories",
+    state: missingStore.length ? "needed" : "ready",
+    detail: missingStore.length
+      ? `Missing: ${missingStore.map((m) => m.field).join(", ")}. Set them with book_metadata_set.`
+      : `${published?.keywords?.length ?? 0} keyword(s), ${published?.categories?.length ?? 0} categor${
+          published?.categories?.length === 1 ? "y" : "ies"
+        }.`,
+  });
+
+  items.push({
+    item: "ISBN",
+    state: published?.isbn && Object.keys(published.isbn).length ? "ready" : "optional",
+    detail:
+      published?.isbn && Object.keys(published.isbn).length
+        ? Object.entries(published.isbn)
+            .map(([edition, isbn]) => `${edition}: ${isbn}`)
+            .join(", ")
+        : "Not needed for a KDP e-book; a paperback needs one (KDP can assign one free).",
   });
 
   items.push({
@@ -456,9 +591,13 @@ export function collectDashboard(): DashboardData {
     (sum, chapter) => sum + (liveWords.get(chapter.id) ?? 0),
     0
   );
-  const staleCounts = chapters.filter(
-    (chapter) => (liveWords.get(chapter.id) ?? 0) !== chapter.wordCount
-  );
+  // A registry counted by the older word counter differs everywhere for that
+  // reason alone, and is recounted on its next write; only a current one says
+  // anything about edits made outside the tools.
+  const staleCounts =
+    registry.countVersion === WORD_COUNT_VERSION
+      ? chapters.filter((chapter) => (liveWords.get(chapter.id) ?? 0) !== chapter.wordCount)
+      : [];
   const byStatus: Record<string, number> = {};
   for (const chapter of chapters) {
     byStatus[chapter.status] = (byStatus[chapter.status] || 0) + 1;
@@ -496,7 +635,8 @@ export function collectDashboard(): DashboardData {
   const bible = getStoryBible();
   const presence = buildPresence(chapters, bible?.characters ?? [], texts);
   const timeline = buildTimelineMap(registry, chapters);
-  const velocity = buildVelocity(chapters, texts);
+  const velocity =
+    velocityFromLog(registry, totalWords, now) ?? buildVelocity(chapters, texts);
 
   // Projection needs the target, which velocity does not see.
   if (velocity.wordsPerDay && velocity.wordsPerDay > 0) {
@@ -528,6 +668,32 @@ export function collectDashboard(): DashboardData {
     );
   }
 
+  // Scenes and whose eyes they are seen through.
+  const listedScenes = listScenes(chapters, (c) => texts.get(c.id) ?? "");
+  const povWords = new Map<string, { scenes: number; words: number }>();
+  let sceneTotal = 0;
+  let described = 0;
+  let sceneWords = 0;
+  for (const { scenes: chapterScenes } of listedScenes.chapters) {
+    for (const { scene, meta } of chapterScenes) {
+      sceneTotal++;
+      sceneWords += scene.words;
+      if (meta) described++;
+      const name = meta?.pov
+        ? bible?.characters.find((c) => c.id === meta.pov)?.name ?? meta.pov
+        : "(not set)";
+      const entry = povWords.get(name) ?? { scenes: 0, words: 0 };
+      entry.scenes++;
+      entry.words += scene.words;
+      povWords.set(name, entry);
+    }
+  }
+  if (listedScenes.lost.length) {
+    notes.push(
+      `${listedScenes.lost.length} scene note(s) lost their scene — its opening was rewritten or cut. book_scene_list shows them.`
+    );
+  }
+
   return {
     generatedAt: now.toISOString(),
     overview: {
@@ -549,6 +715,18 @@ export function collectDashboard(): DashboardData {
     presence,
     timeline,
     velocity,
+    scenes: {
+      total: sceneTotal,
+      described,
+      pointOfView: [...povWords]
+        .map(([character, entry]) => ({
+          character,
+          ...entry,
+          share: sceneWords ? Math.round((entry.words / sceneWords) * 100) : 0,
+        }))
+        .sort((a, b) => b.words - a.words),
+      lost: listedScenes.lost.length,
+    },
     health: buildHealth(registry, chapters, texts, presence, timeline, now),
     readiness: buildReadiness(registry),
     notes,

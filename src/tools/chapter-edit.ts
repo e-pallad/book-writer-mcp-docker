@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { readChapterFile, writeChapterFile, updateRegistry } from "../storage/filestore";
+import { readChapterFile, updateRegistry } from "../storage/filestore";
+import { saveChapterContent } from "../storage/writing-log";
 import { snapshotIfChanged } from "../storage/history";
 import { ChapterMeta } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
-import { paragraphNumberAt, toNFC } from "../utils/text";
+import { toNFC } from "../utils/text";
+import { condense, MAX_SNIPPET_MATCH, Snippet, snippetAt } from "../utils/match";
 import { countWords } from "../utils/wordcount";
 import { requireProject, resolveChapter } from "./manuscript";
 
@@ -14,10 +16,6 @@ function jsonResult(payload: unknown) {
   };
 }
 
-// Long enough to recognise a passage, short enough that a reply with several
-// of them stays small — the whole point of these tools is to avoid moving the
-// chapter through the conversation.
-const MAX_SNIPPET_MATCH = 120;
 const MAX_REPORTED_SNIPPETS = 3;
 
 /**
@@ -64,35 +62,6 @@ function spliceAll(
   }
 
   return result + content.slice(cursor);
-}
-
-// Runs of whitespace collapse to a single space so a snippet stays on one line.
-// It is a preview for locating a passage, not a quotation.
-function condense(value: string, limit = Number.POSITIVE_INFINITY): string {
-  const flattened = value.replace(/\s+/g, " ");
-  return flattened.length > limit ? `${flattened.slice(0, limit)}…` : flattened;
-}
-
-interface Snippet {
-  paragraph: number;
-  before: string;
-  match: string;
-  after: string;
-}
-
-function snippetAt(
-  content: string,
-  start: number,
-  length: number,
-  contextChars: number
-): Snippet {
-  const end = start + length;
-  return {
-    paragraph: paragraphNumberAt(content, start),
-    before: condense(content.slice(Math.max(0, start - contextChars), start)),
-    match: condense(content.slice(start, end), MAX_SNIPPET_MATCH),
-    after: condense(content.slice(end, end + contextChars)),
-  };
 }
 
 export function registerChapterEditTools(server: McpServer): void {
@@ -241,9 +210,7 @@ export function registerChapterEditTools(server: McpServer): void {
         // book_chapter_revert restores the text as it was.
         snapshotTimestamp = snapshotIfChanged(chapter.id, chapter.filename, next);
 
-        writeChapterFile(chapter.filename, next);
-        chapter.wordCount = wordCountAfter;
-        chapter.updatedAt = new Date().toISOString();
+        saveChapterContent(registry, chapter, next);
 
         // Taken against the new text, so the offsets point at the replacement.
         const newOffsets: number[] = [];

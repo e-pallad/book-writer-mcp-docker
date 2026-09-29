@@ -178,15 +178,28 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 
 ## Tools Reference
 
+### Concept & Exposé
+
+| Tool | What it does |
+|------|-------------|
+| `book_concept_set` | Premise, logline, central question, readership, comparable titles, unique selling point — or, for non-fiction, the argument and the reader's takeaway |
+| `book_concept_get` | The concept, the themes, and what an exposé still lacks |
+| `book_expose_generate` | An exposé in the book's language, with a sample of the first chapters as a submission manuscript |
+
 ### Manuscript (core workflow)
 
 | Tool | What it does |
 |------|-------------|
-| `book_init` | Initialize a new book project |
+| `book_init` | Initialize a new book project (title, author, genre, target, language) |
+| `book_project_update` | Change title, author, genre, target, language, daily goal, deadline or time zone |
+| `book_progress` | Today's words against the goal, streak, last 14 days, pace, deadline |
 | `book_chapter_create` | Create a new chapter |
 | `book_chapter_read` | Read a chapter's content and metadata |
 | `book_chapter_update` | Replace a chapter's whole content, or change title, synopsis or status |
 | `book_chapter_find` | Find text in a chapter with paragraph numbers and context |
+| `book_find` | Find text across the whole book (whole words, case-insensitive if asked) |
+| `book_replace_text` | Replace text across the book — a dry run unless told otherwise |
+| `book_todo_list` | Placeholders left while drafting: `[TK]`, `[TODO: …]`, `[RECHERCHE: …]` |
 | `book_chapter_replace_text` | Replace one passage in a chapter, leaving the rest untouched |
 | `book_chapter_rename` | Rename a chapter (registry, file name, heading, outline) |
 | `book_chapter_delete` | Delete a chapter (file moves to `.book-mcp/trash/`) |
@@ -195,7 +208,7 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_chapter_history_list` | List a chapter's saved versions with a per-version diff summary |
 | `book_chapter_revert` | Restore a saved version (the text it replaces is saved first) |
 | `book_chapter_diff` | Unified diff between a saved version and the current text |
-| `book_stats` | Manuscript-wide statistics |
+| `book_stats` | Manuscript-wide statistics, including the extent in Normseiten |
 
 ### Story Bible (world-building & continuity)
 
@@ -203,15 +216,28 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 |------|-------------|
 | `book_character_add` | Add a character to the story bible |
 | `book_character_update` | Update a character's details |
+| `book_character_rename` | Rename a character in the bible, the prose, synopses and the timeline |
 | `book_character_get` | Retrieve a character's full profile |
 | `book_character_list` | List all characters |
 | `book_setting_add` | Add a setting (location, world, organization) |
+| `book_setting_update` | Change a setting's name, description, type or notes |
 | `book_setting_get` | Retrieve a setting's details |
 | `book_setting_list` | List all settings |
-| `book_plot_thread_add` | Track an open plot thread |
+| `book_plot_thread_add` | Track an open plot thread, with keywords the prose uses for it |
+| `book_plot_thread_update` | Edit a thread, or mark it `abandoned` with a reason |
+| `book_plot_thread_touch` | Record that a chapter carries a thread forward |
 | `book_plot_thread_resolve` | Mark a plot thread as resolved |
 | `book_plot_threads_list` | List plot threads by status |
+| `book_theme_add` / `book_theme_list` / `book_theme_remove` | The book's themes |
 | `book_continuity_check` | Cross-reference a chapter against the story bible |
+
+### Research
+
+| Tool | What it does |
+|------|-------------|
+| `book_research_add` | Keep a fact, a source or a note, with tags, the chapters it is used in, and whether it goes in the bibliography |
+| `book_research_list` | Find entries by tag, chapter or text — or one in full by id |
+| `book_research_update` / `book_research_delete` | Change or remove an entry |
 
 ### Timeline
 
@@ -226,9 +252,31 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 
 | Tool | What it does |
 |------|-------------|
-| `book_outline_set` | Set the full hierarchical outline |
-| `book_outline_get` | Retrieve the outline |
-| `book_outline_update_chapter` | Update synopsis or scenes for one chapter |
+| `book_outline_set` | Set the full hierarchical outline; entries can be linked to chapters |
+| `book_outline_get` | Retrieve the outline, with each entry's chapter and its status |
+| `book_outline_update_chapter` | Update an entry's synopsis, scenes or link — found by title or by its chapter |
+| `book_outline_link` | Link entries to the chapters written from them, where the title is unambiguous |
+| `book_outline_compare` | Plan against manuscript: not yet written, not planned, moved, retitled |
+
+### Revision
+
+| Tool | What it does |
+|------|-------------|
+| `book_revision_checklist` | What a pass looks at — structural, line, copy, proof — and the tools for it |
+| `book_revision_mark` | Mark a pass done for chapters |
+| `book_revision_status` | Which chapter has had which pass, and which pass is next |
+| `book_stylesheet_add` / `list` / `remove` | The copy-edit style sheet: one spelling per word |
+| `book_stylesheet_check` | Variant spellings left in the book, and mixed or typewriter quotation marks |
+| `book_prose_check` | Filler words, echoes, sentence lengths, long paragraphs, dialogue share, adverbs |
+
+### Structure
+
+| Tool | What it does |
+|------|-------------|
+| `book_structure_templates` | Three-act, hero's journey, Save the Cat, Freytag, seven-point — with their beats and positions |
+| `book_structure_set` | Choose the structure the book follows |
+| `book_beat_set` | Place a turning point in a chapter (or scene) |
+| `book_structure_check` | Where each beat actually falls, measured in words; and the characters' arcs |
 
 ### Style Guide
 
@@ -241,12 +289,37 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_style_list_influences` | List author influences |
 | `book_style_remove_influence` | Remove an author influence |
 
+### Scenes
+
+| Tool | What it does |
+|------|-------------|
+| `book_scene_list` | A chapter's (or the book's) scenes, with what is noted about each, and the point-of-view share |
+| `book_scene_set` | Note a scene's point of view, setting, time, goal, conflict, outcome and summary |
+
+### Reader and Editor Notes
+
+| Tool | What it does |
+|------|-------------|
+| `book_note_add` | Record a note from a test reader, the editor or the author, anchored to a passage |
+| `book_note_list` | Open (or resolved) notes, with where each passage is now |
+| `book_note_resolve` | Mark a note dealt with, and how — or reopen it |
+| `book_note_delete` | Delete a note recorded by mistake |
+
+### Front & Back Matter
+
+| Tool | What it does |
+|------|-------------|
+| `book_matter_set` | Add or replace a section: copyright page, dedication, epigraph, foreword, preface, cast list, afterword, acknowledgements, glossary, bibliography, about the author, also by |
+| `book_matter_get` | One section, and what it will print |
+| `book_matter_list` | All sections in reading order |
+| `book_matter_remove` | Remove a section |
+
 ### Export
 
 | Tool | What it does |
 |------|-------------|
 | `book_export_markdown` | Compile all chapters into a single Markdown file |
-| `book_export_docx` | Export a formatted `.docx` with title page, TOC, and page numbers |
+| `book_export_docx` | Export a `.docx` — as a book (`preset="book"`), a German **Normseite** manuscript or the **Standard Manuscript Format** |
 | `book_export_epub` | Export a valid EPUB3 with a title page and generated table of contents |
 
 ### Dashboard
@@ -272,6 +345,8 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_cover_get_spec` | Retrieve the cover spec |
 | `book_cover_generate_prompt` | Generate an AI image prompt from the cover spec |
 | `book_cover_checklist` | KDP publishing readiness checklist |
+| `book_metadata_set` | Subtitle, series, description, keywords, categories, ISBNs, publisher, date, copyright, contributors |
+| `book_metadata_get` | The metadata, its copyright line, what a store would reject, and what is missing |
 | `book_ai_disclosure_generate` | Work out what KDP needs declared about AI use, and record it |
 | `book_ai_disclosure_get` | Read back the recorded AI disclosure |
 
@@ -284,6 +359,198 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_author_regenerate_intro` | Regenerate bio from profile data |
 | `book_author_update_intro` | Directly edit the generated bio |
 | `book_author_get_profile` | Retrieve the full author profile |
+
+## Concept and Exposé
+
+Every book starts as a concept, and every submission starts with an exposé.
+`book_concept_set` keeps the concept: fiction or non-fiction, the **premise**,
+the **logline** (the book in one sentence), the **central question**, the
+readership, **comparable titles** with what each shares with this book, and
+what sets it apart; for non-fiction the **core argument** and **what the
+reader takes away**. It reviews what it is given — a logline of three
+sentences is not a logline — and says what an exposé would still lack.
+
+`book_expose_generate` writes the exposé in the book's language (*Exposé* or
+*Book Proposal*) from what the project already knows: the facts with the extent
+in Normseiten and the state of the manuscript, the pitch, the premise, the
+themes, a synopsis assembled from the chapter synopses (or the outline's, for a
+chapter without one), the cast, the comparable titles and the author's bio.
+What the project does not know yet is marked `[TODO: … fehlt — how to add it]`
+in the text and listed in the reply, rather than silently left out.
+
+With it goes the sample agencies ask for: the first chapters — whole chapters,
+never one cut off mid-scene — up to about 30 Normseiten, as a Normseite
+manuscript for a German book (`leseprobe.docx`) or in Standard Manuscript
+Format for an English one (`sample.docx`).
+
+## The Book's Language
+
+Every check that reads prose depends on the language it is written in: tense
+and point of view, passive voice, who a dialogue tag names, which weekday a
+chapter mentions, whether a trait is contradicted. `book_init` therefore takes
+a `language` (a BCP 47 tag, `en` by default), and `book_project_update` changes
+it later:
+
+```
+book_init title="Der Hafen" author="…" genre="Roman" language="de"
+book_project_update language="de-AT"
+```
+
+The rules live in `src/lang/`, one object per language. The language also
+decides what the exports declare: the EPUB's `dc:language` (which readers use
+for hyphenation and text-to-speech — `book_export_epub language=` still
+overrides it), the proofing language of the `.docx`, the preview's `lang`
+attribute, and labels such as *Contents* / *Inhalt*.
+
+**For a language without rules, the checks say so.** `book_style_check` and
+`book_continuity_check` list the checks that could not run under
+`checksSkipped`, and a passage with nothing flagged scores `partially_checked`
+rather than `clean` — a clean result nothing earned is worse than none.
+Checks that do not depend on the language, like the style guide's *things to
+avoid*, run either way. A project created before the field existed is treated
+as English, as it always was, and the reply says so.
+
+Tense and point-of-view rules read the **narration only**: quoted dialogue is
+blanked out first, because a character in a past-tense, third-person novel
+says "I think" without breaking anything.
+
+### Supported languages
+
+| | English (`en`) | German (`de`) |
+|---|---|---|
+| Tense | *he says* / *he said* | *sie geht*, *dann geht sie* / *sie ging*, *dann ging sie* |
+| Point of view | *I thought* / *she thought* | *dachte ich*, *ich wusste* / *dachte sie*, *er fragte sich* |
+| Passive | *was opened* | *wurde … geöffnet* (participles with *ge-*) |
+| Dialogue tags | *Kell said*, *said Kell* | *sagte Mara*, *Mara rief*, and 40-odd more verbs of speech |
+| Quotation marks | "…" “…” ‘…’ | „…“ »…« ‚…‘ — and «…» for Swiss and French texts |
+| Weekdays, time of day | *Saturday*, *night* | *Samstag* = *Sonnabend*, *nachts*, *am Morgen* |
+| Contradicted traits | *tall* vs *short* | *groß* vs *klein*, *kleine*, *kleinen* |
+
+German capitalises every noun, so nothing is taken for a name just because it
+is capitalised. A speaker is a capitalised word next to a verb of speech, and
+not one that follows an article, a possessive or a preposition (*die alte Frau
+sagte*, *die Frau am Tresen sagte*), nor one followed by an inverted pronoun
+(*Hinterher sagte er*). Adjectives are matched in lowercase with their endings,
+so *klein* finds *kleine* but never *Kleinigkeit*, and *alt* never the noun
+*Alter*. Bare *morgen* is not a time of day, because lowercased it cannot be
+told apart from *tomorrow*.
+
+Guillemets point either way: German sets »so«, French and Swiss «so». The
+direction is taken from whichever mark comes first, because pairing German
+»…« the French way captures the narration *between* two lines of speech.
+
+## Writing Chapters: the Markup
+
+Chapters are plain Markdown files, and every output — the preview, the live
+server, the EPUB and the `.docx` — reads them through one parser
+(`src/utils/markdown.ts`), so a chapter looks the same wherever it ends up.
+
+| You type | You get |
+|---|---|
+| `# Title`, `## Section`, `### Subsection` | Headings |
+| `*italic*` or `_italic_`, `**bold**`, `***both***` | Emphasis. Underscores count only at word edges, so `snake_case` is left alone |
+| `\*` | A literal asterisk |
+| A blank line | A new paragraph. A single line break inside a paragraph is kept as a line break |
+| `***`, `* * *`, `---`, `- - -`, `___`, `#`, `⁂`, `~ ~ ~`, `• • •` on a line of their own | A **scene break** |
+| `> …` | A block quote — for an epigraph, a letter, a document quoted in the story |
+
+Every scene-break spelling means the same thing, so use whichever your hands
+already know. The line does not need blank lines around it. `~~~` on its own is
+deliberately *not* a scene break, because most editors read it as the start of
+a code block.
+
+## Daily Goals, Deadline and the Writing Log
+
+Drafting runs on a daily quota and a deadline. Set them once:
+
+```
+book_project_update dailyWordGoal=1000 deadline="2027-03-31" timezone="Europe/Berlin"
+```
+
+Every change to chapter text made through the tools — creating, updating,
+replacing a passage, reverting, deleting — goes through one write path
+(`saveChapterContent` in `src/storage/writing-log.ts`) and is logged in
+`.book-mcp/writing-log.json` against the calendar day in the project's time
+zone. A container runs in UTC; without a `timezone`, a late session in Berlin
+would count towards tomorrow.
+
+`book_progress` answers from that log:
+
+| | |
+|---|---|
+| `today` | Words added and cut, net, and what is left to the goal |
+| `streak` | Days in a row with words added — and days that met the goal. Today does not break a streak before it is over |
+| `recent` | The last 14 days |
+| `averages` | Words per day over the days the log covers. Days before the log began are not counted as zeros |
+| `deadline` | Days left (today included), words a day needed, and whether the recent pace is enough — `null` until three days are logged |
+| `projectedFinish` | When the target is reached at the recent net pace |
+
+Each change counts what it grew or shrank the text by, so rewriting a paragraph
+at the same length adds nothing, and the goal is measured against words
+*added*. The dashboard's *Words over time* chart uses the log once it spans two
+days, and falls back to reconstructing from saved versions before that.
+
+Word counts count prose, not markup: a heading's `#`, a scene break, a quote's
+`>` and a free-standing dash are not words. A project counted by the older
+counter is recounted the next time its registry is written.
+
+## Structure and Character Arcs
+
+Classic plotting leans on a handful of structures and on their turning points
+falling at roughly known places — the midpoint near the middle, the first
+plot point near a quarter. `book_structure_templates` lists five, with where
+each beat conventionally falls: the three-act structure, the hero's journey
+(Vogler), Save the Cat, Freytag's pyramid and the seven-point structure.
+
+```
+book_structure_set template="three_act"
+book_beat_set beat="midpoint" chapterId="Das Boot" scene=2 note="Mara erfährt, wer der Tote ist."
+book_structure_check
+```
+
+`book_structure_check` measures where each placed beat actually falls, **by
+words** — the middle of its chapter, or of its scene — and reports beats more
+than 7% from their place (the tolerance is adjustable), beats placed out of the
+template's order, and beats not placed yet. An unfinished book is measured
+against its target length, since the draft's end is not the book's end. The
+positions are conventions, not rules: the report says *early* or *late*, and
+the dashboard lists it under *structure*. Switching structure keeps the beats
+the two share.
+
+A character's **arc** sits in their profile: what they `want`, what they
+`need`, the `wound` behind the `lie` they believe, whether the arc is
+`positive`, `negative` or `flat`, and `milestones` — the chapters where it
+moves. Updating an arc merges into it, so milestones can be added as the draft
+grows. The structure check reminds you of a protagonist without an arc, or a
+changing arc without its core, and the exposé's cast list says what each
+character wants and needs.
+
+## The Outline and the Manuscript
+
+The outline is the plan; the chapters are what got written. They drift apart —
+chapters are split, merged, moved, dropped, renamed — and every revision asks
+the same question: what did I plan, what did I write, what changed?
+
+An outline entry can be **linked** to the chapter written from it. The link is
+by chapter id, so it survives a rename on either side and tells two chapters
+with the same title apart. It is made without asking:
+
+- `book_chapter_create` links the unlinked entry with the chapter's title — or
+  the one named in `outlineTitle`, when the chapter was written under another
+  title than planned (an entry that does not exist is refused before anything
+  is written);
+- `book_outline_set` links entries whose title matches exactly one chapter,
+  and takes an explicit `chapterId`;
+- `book_outline_link` catches up on a plan written after the chapters, and
+  reports the titles several chapters share, to link by hand with
+  `book_outline_update_chapter linkTo=...`.
+
+`book_outline_compare` then lays plan and manuscript side by side: entries not
+written yet, chapters the plan does not mention, chapters in a different place
+than planned (counted among the chapters both know, so one missing chapter does
+not make every later one look moved), chapters retitled since, and where the
+plan's synopsis and the chapter's now say different things. `book_outline_get`
+shows each entry with its chapter's status and length.
 
 ## Renaming and Deleting Chapters
 
@@ -316,6 +583,32 @@ history of the one it replaced.
 
 Both tools (and every other chapter tool) accept either a chapter id or the
 current chapter title.
+
+## Plot Threads and Themes
+
+A thread is carried by a chapter when the chapter opens it, when the prose
+names its title or one of its **keywords**, or when the author says so with
+`book_plot_thread_touch` — a chapter can keep a thread alive without naming it.
+`book_continuity_check` reminds you of an open thread only once it has rested
+for more than five chapters since it was last carried, and says where that was;
+the dashboard weights its finding the same way. A thread you drop on purpose is
+marked `abandoned` with `book_plot_thread_update`, keeps the reason, and is
+never nagged about again.
+
+```
+book_plot_thread_add title="Kells Schulden" openedIn="Der Kai" summary="…" \
+                     keywords=["Schuldschein", "der Wirt"]
+book_plot_thread_touch threadId="Kells Schulden" chapterId="ch-008" note="Kell weicht dem Wirt aus."
+book_plot_thread_update threadId="Der Brief" status="abandoned" reason="Doppelt mit der Schuld-Handlung."
+```
+
+Characters are addressed by id, name or alias, settings by id or name, threads
+by id or title, and a chapter anywhere in the story bible by id or title — it
+is stored as its id. A chapter that does not exist yet (a thread planned during
+outlining) is kept as given, with a warning.
+
+Themes — what the book is about underneath its plot — are kept with a short
+description of how the book treats them (`book_theme_add`).
 
 ## Per-Character Voice
 
@@ -448,6 +741,36 @@ refused, and writes nothing.
 A replacement is spliced in literally: prose containing `$&` or `$1` survives
 intact, which it would not if this went through `String.replace`.
 
+### Changes across the whole book
+
+`book_find` searches every chapter (or the ones listed) and reports each
+occurrence with its chapter, paragraph and context. `wholeWord` keeps *Mara*
+from matching *Maraschino*; `caseSensitive=false` folds case, Unicode-aware. The
+counts always cover every match; the snippets stop at `maxResults`.
+
+`book_replace_text` is the book-wide replacement, and it is a **dry run by
+default**: it reports what would change, chapter by chapter, and tells you the
+`expectedCount` to pass with `dryRun=false`. If the book no longer matches that
+count when you apply it, nothing is written. Each changed chapter's previous
+text is filed first, so `book_chapter_revert` undoes the change chapter by
+chapter.
+
+`book_character_rename` renames a character everywhere at once — the story
+bible, the prose of every chapter, chapter and outline synopses, timeline
+events, and other characters' descriptions, notes and relationships. It is
+whole-word and case-sensitive. When old and new name have the same number of
+words, each changed word is renamed on its own as well (*Vance* → *Reed*),
+unless another character's name contains that word — *Tom Vance*'s surname is
+left alone and reported. English possessives (*Mara's*) are renamed; a form
+with letters attached, like the German genitive *Maras*, is **reported, not
+guessed at** — pass `includeGenitive=true` to rename *-s* genitives, or fix the
+rest with `book_replace_text`.
+
+```
+book_character_rename characterId="Mara Vance" newName="Maria Reed" dryRun=true
+book_character_rename characterId="Mara Vance" newName="Maria Reed" includeGenitive=true
+```
+
 ### Reading only part of a chapter
 
 `book_chapter_read` takes optional `fromParagraph` and `toParagraph` (1-based,
@@ -458,6 +781,146 @@ chapter exactly as before.
 ```
 book_chapter_read chapterId="ch-003" fromParagraph=12 toParagraph=14
 ```
+
+## Scenes
+
+Classic drafting thinks in scenes, not chapters: one point of view, one place,
+one time — a goal, a conflict in its way, an outcome that turns into the next
+scene. A chapter's scenes are the stretches between its scene breaks, so there
+is nothing to maintain: `book_scene_list` reads them off the text, with their
+paragraph range, length and opening words.
+
+```
+book_scene_list chapterId="Der Kai"
+book_scene_set chapterId="Der Kai" scene=2 pov="Kell" setting="Schuppen" \
+               goal="Das Geld auftreiben" conflict="Der Wirt will es heute" outcome="Er beschließt zu stehlen"
+```
+
+What is noted about a scene lives in `.book-mcp/scenes.json`, **anchored to the
+scene's opening words**: insert a scene in front of it and its notes move with
+it; rewrite its opening and the notes are reported as lost rather than pinned
+to whichever scene now has its number. `pov` is a character from the story
+bible (a unique first name will do), `setting` one of its settings or free text.
+
+Across the book, `book_scene_list` and the dashboard show how the words are
+shared between point-of-view characters, and scenes noted without a conflict
+are counted — a scene without one is often a scene that can go. In a
+third-person book, `book_continuity_check` flags a scene whose point-of-view
+character is never named in it: either the noted POV is wrong, or the scene
+drifted into someone else's head.
+
+## Research
+
+Research is its own step of writing a book — for a historical novel as much as
+for non-fiction — and its results belong where the book can find them.
+`book_research_add` keeps an entry: a title, the fact or excerpt, the citation
+as a bibliography would print it, a link, tags, and the chapters it is used in
+(by id or title; a chapter not written yet is kept, with a warning).
+
+```
+book_research_add title="Gezeiten im Hamburger Hafen" content="Tidenhub etwa 3,6 m …" \
+  source="Bundesamt für Seeschifffahrt: Gezeitentafeln 1997. Hamburg 1996." \
+  tags=["Hafen", "Wasser"] chapters=["Die Gezeiten"] bibliography=true
+book_research_list tag="Hafen"
+book_research_list chapterId="Die Gezeiten"
+```
+
+`book_research_list` finds entries by tag, chapter or text (content is
+shortened in a list; ask for one by `id` for all of it) and marks entries filed
+under a chapter that no longer exists — deleting a chapter reports them too. A
+draft's `[RECHERCHE: Gezeiten]` placeholder is matched to the research on file
+for it in `book_todo_list`. Entries marked `bibliography=true` (which needs a
+citation) become the **bibliography** — add it with `book_matter_set
+type=bibliography` and it is written from them at every export.
+
+## Placeholders While Drafting
+
+The rule of a first draft is to keep going. Where a name, a fact or a date is
+missing, leave a marker and write on:
+
+```
+Sie nahm die Fähre nach [TK].
+Der Hafenmeister hieß [TODO: Name aus dem Adressbuch 1997].
+[RECHERCHE: Gezeiten am 14. Juni]
+```
+
+`[TK]` (journalism's *to come*), `[TODO …]`, `[FIXME …]`, `[RECHERCHE …]`,
+`[PRÜFEN …]`, `[CHECK …]`, `[XXX]` and a bare capital `TK` are recognised, with
+the note after them. Only these words open a marker, so an ordinary bracket —
+`[sic]`, a stage direction — is left alone, and neither `TKO` nor a lowercase
+`tk` counts.
+
+`book_todo_list` lists each one with chapter, paragraph and context, and can
+filter by kind (`kind="RECHERCHE"` for a research session). While any remain,
+every export and the preview warn; `book_chapter_update status="final"` warns
+for the chapter; and the dashboard counts them under *draft* — as serious once
+they sit in a chapter marked review or final.
+
+## Notes from Test Readers and the Editor
+
+Between the draft and the finished book stand test readers and an editor, and
+their feedback — *why does she already know this here?*, *this scene drags* —
+belongs next to the passage it is about, not in a chat history.
+
+```
+book_note_add chapterId="Der Kai" anchorText="Sie wusste schon, wer der Tote war." \
+              text="Woher weiß sie das an dieser Stelle schon?" source="Testleserin A" kind="question"
+book_note_list status="open"
+book_note_resolve noteId="note-…" resolution="Hinweis in Kapitel 2 eingebaut."
+```
+
+A note is anchored to the **words** it is about, not to a position. Each time
+notes are listed the passage is found again, so a paragraph added above it
+moves the note with it; a passage that occurs twice is told apart by the
+paragraph it was in when the note was made. If a revision cuts the passage,
+the note is reported as **lost** — with the paragraph it used to be in — rather
+than shown next to the wrong text. A note can also be pinned to a whole
+paragraph (`paragraph=3`) or to the chapter as a whole.
+
+Open notes are not forgotten: `book_chapter_update status="final"` warns when a
+chapter still has some (the author still decides), the dashboard lists them
+under *feedback* — as serious when they sit on a chapter already marked final —
+and deleting a chapter reports the notes it leaves behind.
+
+## Revising in Passes
+
+A classic revision goes from the large to the small, because polishing the
+sentences of a scene the structural edit will cut is wasted work:
+
+1. **Structural** (*Entwicklungslektorat*) — does the chapter earn its place;
+   scenes with a goal, a conflict, an outcome; turning points; threads;
+   timeline.
+2. **Line** (*Stillektorat*) — every sentence, filler, echoes, rhythm, voices.
+3. **Copy** (*Korrektorat*) — spelling, consistency, quotation marks, numbers.
+4. **Proof** (*Schlusskorrektur*) — the last typos, in the exported format.
+
+`book_revision_checklist pass=...` gives the questions of each pass in the
+book's language, with the tools that answer them. `book_revision_mark` records
+a pass per chapter (or `["all"]`), and `book_revision_status` shows the matrix,
+how far each pass has got and which comes next — and points out a chapter
+copy-edited before its structural pass. The chapter status (`draft`, `review`,
+`final`) is unchanged by any of this.
+
+### The style sheet
+
+Where more than one spelling is correct, the copy editor keeps a list of the
+one this book uses. `book_stylesheet_add preferred="E-Mail" variants=["Email",
+"eMail"]` adds an entry; `book_stylesheet_check` finds every variant still in
+the book — whole words, case-sensitive unless asked otherwise — with its
+chapter, paragraph and the `book_replace_text` call that fixes it. It also
+reports quotation marks: more than one convention in the same book („…“ and
+»…«), typewriter quotes where the language sets typographic ones, and
+typewriter apostrophes.
+
+### Prose analysis
+
+`book_prose_check` reads a chapter (or a passage) the way a line editor does,
+and reports what it finds as hints, not errors — each is sometimes exactly
+right: filler words per thousand (*eigentlich*, *irgendwie*; *just*, *really*),
+a word echoed within thirty words (the cast's names excepted), sentence length
+— average, spread, a monotonous run, the longest ones — paragraphs over 180
+words, the share of dialogue, and in English adverbs in *-ly*. Markup is not
+counted, and a language without rules is told so rather than analysed badly.
 
 ## Chapter Version History
 
@@ -554,9 +1017,13 @@ Tools reach it through the transaction helpers in `src/storage/filestore.ts`
 files should go through the matching helper rather than calling `get*` and
 `save*` in sequence. Read-only tools need no lock.
 
-A chapter rename is the one nested case: it holds `registry.json` and takes
-`outline.json` inside it. That order — registry, then outline — is the only one
-used anywhere, so the two cannot deadlock against each other.
+Two tools nest transactions. A chapter rename holds `registry.json` and takes
+`outline.json` inside it; `book_character_rename` holds `registry.json` and
+takes `story-bible.json`, then `timeline.json`, then `outline.json`. That order
+— registry, story bible, timeline, outline — is the only one used anywhere, and
+no tool that holds a later file reaches back for an earlier one, so they cannot
+deadlock. `writing-log.json` takes no lock of its own: it is only ever written
+inside a registry transaction, which already serialises it.
 
 Two caveats worth knowing:
 
@@ -579,6 +1046,14 @@ your-book/
     story-bible.json    # Characters, settings, plot threads
     timeline.json       # Story events in chronological order
     ai-disclosure.json  # Recorded AI content declaration for KDP
+    writing-log.json    # Words added and cut per day
+    metadata.json       # Publishing metadata: subtitle, series, ISBNs, keywords…
+    matter.json         # Front and back matter
+    notes.json          # Notes from test readers and the editor
+    scenes.json         # What is noted about each scene
+    concept.json        # Premise, logline, readership, comparable titles
+    stylesheet.json     # The copy-edit style sheet
+    research.json       # Research notes and sources
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
@@ -594,9 +1069,92 @@ your-book/
   manuscript.epub       # Created by book_export_epub
   dashboard.html        # Created by book_dashboard_export
   preview.html          # Created by book_preview
+  expose.md             # Created by book_expose_generate
+  leseprobe.docx        # The sample (sample.docx for an English book)
   preview/
     server.js           # Created by book_preview_server
 ```
+
+## Publishing Metadata
+
+A store needs more than a title: a subtitle, the series, a description, search
+keywords, categories, an ISBN per edition, the publisher, the date, the
+copyright line, the editor or translator. `book_metadata_set` keeps them in
+`.book-mcp/metadata.json`; every field is optional, replaces what was there, and
+an empty value clears it.
+
+```
+book_metadata_set subtitle="Ein Kriminalroman" seriesName="Hafen-Krimis" seriesNumber=2 \
+  description="…" keywords=["Hafenkrimi", "Hamburg"] categories=["FIC022000"] \
+  isbnEbook="978-3-16-148410-0" publisher="Kleinverlag" publicationDate="2027-03-01"
+```
+
+What KDP would reject is refused, and the call as a whole with it: an eighth
+keyword, a keyword over 50 characters, a fourth category, a description over
+4000 characters, title and subtitle together over 200, an ISBN whose check digit
+does not add up (usually a typo), two editions sharing an ISBN. ISBNs are stored
+as bare digits, however they were typed. `book_metadata_get` repeats any such
+problem in a hand-edited file, and lists what is still missing.
+
+**The description is the blurb, and it has one home.** The EPUB's description
+and the cover spec's back-cover blurb both read it. A blurb given to
+`book_cover_create_spec` while there is no description becomes the description.
+
+The EPUB takes all of it: the subtitle as a refined `title-type`, the series as
+`belongs-to-collection` with its position, contributors with their MARC
+relator roles, publisher, date, rights and categories — and it still passes
+epubcheck. Its identifier is the e-book ISBN when there is one; otherwise a UUID
+kept in `metadata.json`, so a re-exported draft is the same book to a reader's
+library rather than a second copy. The title pages of the EPUB and the `.docx`
+show the subtitle, and the dashboard's readiness panel lists what is missing.
+
+## Front Matter, Back Matter, Parts and Chapter Numbers
+
+A printed book is more than its chapters. `book_matter_set` adds the rest, and
+every export — Markdown, DOCX, EPUB and the preview, which all build on
+`src/export/assemble.ts` — sets it in the classic order:
+
+| Where | What |
+|---|---|
+| Before the contents | Title page, **copyright page** (*Impressum*), **dedication**, **epigraph** (*Motto*) |
+| After the contents | **Foreword**, **preface**, **cast list** (*Personen*) |
+| Body | Part pages and chapters |
+| After the last chapter | **Afterword**, **acknowledgements**, **glossary**, **bibliography**, **about the author**, **also by** |
+
+Four sections can write themselves when given no content, from data the
+project already has — and are written again at every export, so they are never
+stale:
+
+- the **copyright page** from the metadata: title, subtitle and series, the
+  copyright line, *All rights reserved*, the edition, publisher, contributors
+  and one ISBN per edition;
+- the **cast list** from the story bible: every character above a minor role,
+  main roles first, with the first sentence of their description. Read it for
+  spoilers before publishing, or give the section text of its own;
+- **about the author** from the author profile's bio;
+- the **bibliography** from the research entries marked for it, sorted the
+  way the book's language sorts (*Ärztekammer* before *Bauer*).
+
+Headings come in the book's language (*Danksagung*, *Acknowledgements*) and can
+be overridden with `title`; a dedication, an epigraph and the copyright page
+print without one. `position` moves a section to the other end of the book.
+
+**Parts.** `book_chapter_update part="Die Stadt"` puts a chapter in a part;
+consecutive chapters in the same part share one part page, labelled *Erster
+Teil* / *Part One* unless the part's own title already says so. In the EPUB the
+contents nest the chapters under their part.
+
+**Chapter numbers.** `book_project_update chapterNumbering="words"` prints
+*Drittes Kapitel* / *Chapter Three* above each chapter title (`"numeric"`:
+*Kapitel 3*). A prologue or epilogue marked `numbered=false` carries no number
+and does not push the chapters after it up by one; a chapter exported alone
+keeps the number it has in the whole book.
+
+In the EPUB, each piece of matter is its own document with its EPUB
+structural semantics (`copyright-page`, `dedication`, `epigraph`, `foreword`,
+`acknowledgments`, …), chapters and parts are `<section epub:type="chapter">`
+and `"part"`, and the landmarks point at the copyright page — it all passes
+epubcheck.
 
 ## AI Content Disclosure
 
@@ -647,6 +1205,62 @@ update does not look settled when it is not.
 
 To refresh: re-read the [KDP content guidelines](https://kdp.amazon.com/en_US/help/topic/G200672390),
 update that file, and bump `POLICY_VERIFIED_ON`.
+
+## Which Chapters an Export Contains
+
+`book_export_markdown`, `book_export_docx`, `book_export_epub` and `book_preview`
+all choose chapters the same way (`src/export/select.ts`):
+
+1. `includeChapters` (ids or titles) when you give it — an unknown entry is an
+   error, not a silent omission;
+2. otherwise every chapter marked `review` or `final`;
+3. otherwise, while nothing is marked ready yet, every chapter.
+
+The reply's `selection` field says which rule applied and how many drafts were
+left out. The live preview server is the one exception: it shows every chapter,
+because someone watching it while they write wants to see the draft.
+
+## DOCX Export
+
+`book_export_docx` writes the chapter markdown as real Word formatting rather
+than as text: `*italic*` becomes an italic run, `## Section` a *Heading 2*,
+a scene break a centred `*  *  *`, a `> quote` an indented paragraph. Every
+chapter starts on a new page, and — the convention in printed prose — the first
+paragraph after a heading, a scene break or a quote starts flush while the rest
+are indented. The heading styles are the body font in black, overriding Word's
+built-in blue sans-serif ones.
+
+### Submission manuscripts: Normseite and Standard Manuscript Format
+
+A manuscript sent to an agency or a publisher is not laid out like a book.
+`book_export_docx preset=` produces the two formats the trade expects:
+
+| | `normseite` | `standard_manuscript` |
+|---|---|---|
+| Where | German-language publishing | English-language publishing |
+| Page | A4, 2.5 cm margins, the right one set so a line holds **exactly 60 characters** | US Letter, 1-inch margins |
+| Type | Courier New 12 pt, a line pitch that fits **exactly 30 lines** | 12 pt Times New Roman or Courier New, double-spaced |
+| Running head | `Author · Title / page` | `Surname / TITLE / page` |
+| Cover sheet | Contact block; `ca. 312 Normseiten` top right | Contact block; `about 80,000 words` top right |
+| Chapters | New page, four lines down | New page, a third of the way down, centred title |
+| Scene break | `*` | `#`, and `END` after the last line |
+
+Every paragraph is indented, and in the Normseite every spacing is a whole
+number of lines and widow control is off, so no page holds more or less than
+thirty. The geometry is not left to taste: the tests assert that the text width
+is sixty Courier characters and that thirty lines fit where thirty-one do not.
+Font, size and spacing parameters are ignored for these presets (the reply
+says so), front and back matter are left out — they are the publisher's to
+set — and `contact` fills the cover sheet.
+
+```
+book_export_docx preset="normseite" contact=["Anna Autorin", "Hafenstraße 1, 20457 Hamburg", "anna@example.org"]
+```
+
+`book_stats` reports the extent the way publishers quote it: `normPages`,
+counted by laying the text out exactly as the Normseite export does — each
+chapter on a new page, words wrapped at sixty characters, a scene break three
+lines — and `charactersWithSpaces`.
 
 ## EPUB Export
 

@@ -10,6 +10,8 @@ import {
 } from "../storage/filestore";
 import { POLICY_SOURCE_URL } from "./ai-disclosure-policy";
 import { BookMCPError } from "../utils/errors";
+import { getMetadata, updateMetadata } from "../storage/filestore";
+import { missingMetadata } from "../publishing/metadata";
 
 // Kindle Direct Publishing (KDP) cover specifications
 // Source: https://kdp.amazon.com/en_US/help/topic/G200645690
@@ -215,9 +217,25 @@ export function registerCoverTools(server: McpServer): void {
           ? KDP_SPECS.paperback
           : KDP_SPECS.kindle;
 
+      // The description in metadata.json is the one copy of the blurb; a
+      // blurb given here becomes it when there is none yet.
+      const published = getMetadata();
+      const blurb = input.blurb ?? published?.description;
+      const blurbNote =
+        input.blurb && !published?.description
+          ? "The blurb was also saved as the book's description, the one copy the exports use."
+          : input.blurb && published?.description && input.blurb !== published.description
+          ? "This blurb differs from the book's description in metadata.json, which the exports use. Update it with book_metadata_set if this one is the right text."
+          : undefined;
+      if (input.blurb && !published?.description) {
+        await updateMetadata((m) => {
+          m.description = input.blurb;
+        });
+      }
+
       const spec = {
         title: registry.title,
-        subtitle: input.subtitle,
+        subtitle: input.subtitle ?? published?.subtitle,
         authorName: registry.author,
         genre: registry.genre,
         targetPlatform: input.targetPlatform,
@@ -237,9 +255,9 @@ export function registerCoverTools(server: McpServer): void {
           style: input.style,
           referenceCovers: input.referenceCovers,
         },
-        backCover: (input.targetPlatform !== "kindle" && input.blurb)
+        backCover: (input.targetPlatform !== "kindle" && blurb)
           ? {
-              blurb: input.blurb,
+              blurb,
               authorBio: input.authorBio || "",
               barcodePlacement: "bottom-right" as const,
               testimonials: input.testimonials,
@@ -270,6 +288,7 @@ export function registerCoverTools(server: McpServer): void {
                 spineWidthInches: Math.round(spineWidth * 1000) / 1000,
                 aiImagePrompt: aiPrompt,
                 designBrief: generateDesignBrief(spec),
+                ...(blurbNote ? { note: blurbNote } : {}),
               },
               null,
               2
@@ -415,6 +434,15 @@ export function registerCoverTools(server: McpServer): void {
         status: registry?.author ? "ready" : "needed",
         details: registry?.author || "Set via book_init",
       });
+
+      // What the store page needs besides the files.
+      for (const missing of missingMetadata(getMetadata())) {
+        checklist.push({
+          item: `Book ${missing.field}`,
+          status: "needed",
+          details: `${missing.why} Set it with book_metadata_set.`,
+        });
+      }
 
       // KDP asks about AI-generated content at publishing time, for the cover
       // artwork as much as the prose, so it belongs on the readiness list.

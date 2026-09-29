@@ -10,6 +10,8 @@ export interface ReaderPageOptions {
    * so a saved page carries no executable code.
    */
   refreshSeconds?: number;
+  /** BCP 47 tag for the page, so the browser hyphenates in the book's language. */
+  language?: string;
 }
 
 export function buildReaderPage(
@@ -20,7 +22,7 @@ export function buildReaderPage(
   options: ReaderPageOptions = {}
 ): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${escapeHtml(options.language ?? "en")}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -105,6 +107,13 @@ export function buildReaderPage(
       margin: 0.05em 0.1em 0 0;
       color: #6b4c2a;
     }
+
+    blockquote {
+      margin: 1.5em 2em;
+      font-style: italic;
+      color: #4a4a4a;
+    }
+    blockquote em { font-style: normal; }
 
     em { font-style: italic; }
     strong { font-weight: 600; }

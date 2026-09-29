@@ -7,35 +7,19 @@ import JSZip from "jszip";
 import {
   getRegistry,
   getAuthorProfile,
+  getMetadata,
   readChapterFile,
+  updateMetadata,
 } from "../storage/filestore";
-import { ChapterMeta, Registry } from "../storage/schema";
+import { ContributorRole } from "../storage/schema";
+import { MARC_RELATORS, rightsStatement } from "../publishing/metadata";
 import { BookMCPError } from "../utils/errors";
 import { countWords } from "../utils/wordcount";
-import { escapeHtml, escapeXml, markdownToHtml } from "../utils/markdown";
-
-// The same selection book_export_markdown makes: an explicit list, otherwise
-// everything ready for readers, otherwise everything there is.
-function selectChapters(registry: Registry, includeChapters?: string[]): ChapterMeta[] {
-  const ordered = [...registry.chapters].sort((a, b) => a.order - b.order);
-
-  if (includeChapters) {
-    const unknown = includeChapters.filter(
-      (id) => !registry.chapters.some((c) => c.id === id)
-    );
-    if (unknown.length > 0) {
-      throw new BookMCPError(
-        `Unknown chapter IDs: ${unknown.join(", ")}. Available: ${
-          registry.chapters.map((c) => c.id).join(", ") || "none"
-        }`
-      );
-    }
-    return ordered.filter((c) => includeChapters.includes(c.id));
-  }
-
-  const ready = ordered.filter((c) => c.status === "final" || c.status === "review");
-  return ready.length > 0 ? ready : ordered;
-}
+import { escapeHtml, escapeXml, inlineMarkdownToHtml, markdownToHtml } from "../utils/markdown";
+import { assembleBook, chapterEntry, partEntry } from "../export/assemble";
+import { RenderedMatter } from "../export/matter";
+import { selectChapters } from "../export/select";
+import { isValidLanguageTag, labelsFor, Labels, projectLanguage } from "../lang";
 
 // EPUB3 requires dcterms:modified to the second, with no fractional part.
 function epubTimestamp(date: Date): string {
@@ -89,8 +73,27 @@ hr {
 }
 .titlepage { text-align: center; margin-top: 25%; }
 .titlepage h1 { text-align: center; margin-bottom: 0.5em; }
+.titlepage .subtitle { font-size: 1.2em; margin: 0 0 1.5em; text-indent: 0; }
+.titlepage .series { font-variant: small-caps; margin: 0 0 1em; text-indent: 0; }
 .titlepage .author { font-size: 1.1em; margin: 0; text-indent: 0; }
 .titlepage .genre { font-style: italic; opacity: 0.75; text-indent: 0; }
+.chapter-label, .part-label {
+  text-align: center;
+  text-indent: 0;
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
+  margin: 3em 0 0;
+}
+.chapter-label + h1 { text-align: center; margin-top: 0.5em; }
+.part { text-align: center; margin-top: 30%; }
+.part h1 { text-align: center; margin-top: 0.5em; }
+.dedication, .epigraph { margin-top: 30%; }
+.dedication p { text-align: center; text-indent: 0; font-style: italic; }
+.epigraph p { text-indent: 0; margin-left: 20%; }
+.copyright p { text-indent: 0; margin-bottom: 1em; font-size: 0.9em; }
+blockquote { margin: 1em 2em; }
+blockquote p { text-indent: 0; }
+blockquote p + p { text-indent: 1.2em; }
 nav ol { list-style: none; padding-left: 0; }
 nav li { margin: 0.4em 0; }
 `;
@@ -103,28 +106,76 @@ interface BookMetadata {
   modified: string;
   genre: string;
   description?: string;
+  subtitle?: string;
+  series?: { name: string; number?: number };
+  publisher?: string;
+  date?: string;
+  rights?: string;
+  subjects: string[];
+  contributors: { name: string; role: ContributorRole }[];
 }
 
-function buildPackageDocument(
-  meta: BookMetadata,
-  chapters: { id: string; href: string }[]
-): string {
+// The metadata block beyond the required identifier, title and language. EPUB
+// 3 refines a title with its type, which is how a reading system tells a
+// subtitle from a second title, and places a book in a series with
+// belongs-to-collection.
+function optionalMetadata(meta: BookMetadata): string[] {
+  const lines: string[] = [];
+  if (meta.subtitle) {
+    lines.push(
+      '<meta refines="#title" property="title-type">main</meta>',
+      `<dc:title id="subtitle">${escapeHtml(meta.subtitle)}</dc:title>`,
+      '<meta refines="#subtitle" property="title-type">subtitle</meta>'
+    );
+  }
+  if (meta.series) {
+    lines.push(
+      `<meta property="belongs-to-collection" id="series">${escapeHtml(meta.series.name)}</meta>`,
+      '<meta refines="#series" property="collection-type">series</meta>'
+    );
+    if (meta.series.number !== undefined) {
+      lines.push(`<meta refines="#series" property="group-position">${meta.series.number}</meta>`);
+    }
+  }
+  meta.contributors.forEach((contributor, index) => {
+    const id = `contributor-${index + 1}`;
+    lines.push(
+      `<dc:contributor id="${id}">${escapeHtml(contributor.name)}</dc:contributor>`,
+      `<meta refines="#${id}" property="role" scheme="marc:relators">${MARC_RELATORS[contributor.role]}</meta>`
+    );
+  });
+  if (meta.publisher) lines.push(`<dc:publisher>${escapeHtml(meta.publisher)}</dc:publisher>`);
+  if (meta.date) lines.push(`<dc:date>${escapeHtml(meta.date)}</dc:date>`);
+  if (meta.rights) lines.push(`<dc:rights>${escapeHtml(meta.rights)}</dc:rights>`);
+  for (const subject of meta.subjects) lines.push(`<dc:subject>${escapeHtml(subject)}</dc:subject>`);
+  if (meta.description) lines.push(`<dc:description>${escapeHtml(meta.description)}</dc:description>`);
+  return lines;
+}
+
+interface EpubDoc {
+  id: string;
+  href: string;
+  /** The name in the navigation. */
+  title: string;
+  xhtml: string;
+  /** Listed in the table of contents; the dedication and the like are not. */
+  listed: boolean;
+  /** Nested under the part before it. */
+  nested: boolean;
+}
+
+function buildPackageDocument(meta: BookMetadata, spineDocs: { id: string; href: string }[]): string {
   const manifest = [
     '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav" />',
     '<item id="css" href="style.css" media-type="text/css" />',
     '<item id="titlepage" href="titlepage.xhtml" media-type="application/xhtml+xml" />',
     '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml" />',
-    ...chapters.map(
-      (c) =>
-        `<item id="${c.id}" href="${c.href}" media-type="application/xhtml+xml" />`
-    ),
+    ...spineDocs
+      .filter((d) => d.id !== "nav" && d.id !== "titlepage")
+      .map((d) => `<item id="${d.id}" href="${d.href}" media-type="application/xhtml+xml" />`),
   ];
 
-  const spine = [
-    '<itemref idref="titlepage" />',
-    '<itemref idref="nav" />',
-    ...chapters.map((c) => `<itemref idref="${c.id}" />`),
-  ];
+  const spine = spineDocs.map((d) => `<itemref idref="${d.id}" />`);
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id" xml:lang="${escapeXml(
@@ -132,16 +183,14 @@ function buildPackageDocument(
   )}">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="book-id">${escapeHtml(meta.identifier)}</dc:identifier>
-    <dc:title>${escapeHtml(meta.title)}</dc:title>
+    <dc:title id="title">${escapeHtml(meta.title)}</dc:title>
     <dc:language>${escapeHtml(meta.language)}</dc:language>
     <dc:creator id="author">${escapeHtml(meta.author)}</dc:creator>
     <meta refines="#author" property="role" scheme="marc:relators">aut</meta>
     <meta property="dcterms:modified">${meta.modified}</meta>
-${meta.genre ? `    <dc:subject>${escapeHtml(meta.genre)}</dc:subject>\n` : ""}${
-    meta.description
-      ? `    <dc:description>${escapeHtml(meta.description)}</dc:description>\n`
-      : ""
-  }  </metadata>
+${optionalMetadata(meta)
+  .map((line) => `    ${line}\n`)
+  .join("")}  </metadata>
   <manifest>
     ${manifest.join("\n    ")}
   </manifest>
@@ -153,8 +202,9 @@ ${meta.genre ? `    <dc:subject>${escapeHtml(meta.genre)}</dc:subject>\n` : ""}$
 
 // EPUB3 readers use nav.xhtml, but a good many devices in the wild still read
 // the EPUB2 NCX, and shipping both costs a few hundred bytes.
-function buildNcx(meta: BookMetadata, chapters: { title: string; href: string }[]): string {
-  const points = chapters
+function buildNcx(meta: BookMetadata, docs: EpubDoc[]): string {
+  const points = docs
+    .filter((d) => d.listed)
     .map(
       (c, index) => `    <navPoint id="navpoint-${index + 1}" playOrder="${index + 1}">
       <navLabel><text>${escapeHtml(c.title)}</text></navLabel>
@@ -180,25 +230,47 @@ ${points}
 
 function buildNavDocument(
   meta: BookMetadata,
-  chapters: { title: string; href: string }[]
+  docs: EpubDoc[],
+  labels: Labels,
+  firstBody: string | null,
+  copyrightHref: string | null
 ): string {
-  const items = chapters
-    .map((c) => `      <li><a href="${c.href}">${escapeHtml(c.title)}</a></li>`)
-    .join("\n");
+  // Parts hold their chapters in a nested list, as the reader's contents
+  // screen shows them.
+  const lines: string[] = [];
+  let open = false;
+  for (const doc of docs.filter((d) => d.listed)) {
+    const link = `<a href="${doc.href}">${escapeHtml(doc.title)}</a>`;
+    if (doc.nested) {
+      if (!open) {
+        lines[lines.length - 1] = lines[lines.length - 1].replace(/<\/li>$/, "\n        <ol>");
+        open = true;
+      }
+      lines.push(`          <li>${link}</li>`);
+    } else {
+      if (open) {
+        lines.push("        </ol>\n      </li>");
+        open = false;
+      }
+      lines.push(`      <li>${link}</li>`);
+    }
+  }
+  if (open) lines.push("        </ol>\n      </li>");
 
   return xhtmlDocument(
-    "Contents",
+    labels.contents,
     `<nav epub:type="toc" id="toc">
-    <h1>Contents</h1>
+    <h1>${escapeHtml(labels.contents)}</h1>
     <ol>
-${items}
+${lines.join("\n")}
     </ol>
   </nav>
   <nav epub:type="landmarks" hidden="hidden">
     <h2>Landmarks</h2>
     <ol>
-      <li><a epub:type="titlepage" href="titlepage.xhtml">Title page</a></li>
-${chapters.length ? `      <li><a epub:type="bodymatter" href="${chapters[0].href}">Beginning</a></li>\n` : ""}    </ol>
+      <li><a epub:type="titlepage" href="titlepage.xhtml">${escapeHtml(labels.titlePage)}</a></li>
+      <li><a epub:type="toc" href="nav.xhtml#toc">${escapeHtml(labels.contents)}</a></li>
+${copyrightHref ? `      <li><a epub:type="copyright-page" href="${copyrightHref}">${escapeHtml(labels.matter.copyright)}</a></li>\n` : ""}${firstBody ? `      <li><a epub:type="bodymatter" href="${firstBody}">${escapeHtml(labels.beginning)}</a></li>\n` : ""}    </ol>
   </nav>`,
     meta.language
   );
@@ -209,7 +281,13 @@ function buildTitlePage(meta: BookMetadata): string {
     meta.title,
     `<section epub:type="titlepage" class="titlepage">
     <h1>${escapeHtml(meta.title)}</h1>
-    <p class="author">${escapeHtml(meta.author)}</p>
+${meta.subtitle ? `    <p class="subtitle">${escapeHtml(meta.subtitle)}</p>\n` : ""}${
+      meta.series
+        ? `    <p class="series">${escapeHtml(meta.series.name)}${
+            meta.series.number !== undefined ? ` ${meta.series.number}` : ""
+          }</p>\n`
+        : ""
+    }    <p class="author">${escapeHtml(meta.author)}</p>
 ${meta.genre ? `    <p class="genre">${escapeHtml(meta.genre)}</p>\n` : ""}  </section>`,
     meta.language
   );
@@ -228,14 +306,13 @@ export function registerEpubTools(server: McpServer): void {
         .array(z.string())
         .optional()
         .describe(
-          "Chapter IDs to include (default: all final + review chapters, or every chapter when none are marked ready)"
+          "Chapter IDs or titles to include (default: all final + review chapters, or every chapter when none are marked ready)"
         ),
       language: z
         .string()
         .optional()
-        .default("en")
         .describe(
-          'BCP 47 language tag for the book, e.g. "en", "en-GB", "de" (default: "en")'
+          'BCP 47 language tag for the book, e.g. "en", "en-GB", "de" (default: the project language set with book_init or book_project_update)'
         ),
       identifier: z
         .string()
@@ -246,12 +323,18 @@ export function registerEpubTools(server: McpServer): void {
       description: z
         .string()
         .optional()
-        .describe("Optional blurb stored as the book's description metadata"),
+        .describe("Blurb stored as the book's description (default: the description from book_metadata_set)"),
     },
-    async ({ outputPath, includeChapters, language, identifier, description }) => {
+    async ({ outputPath, includeChapters, language: languageOverride, identifier, description }) => {
       const registry = getRegistry();
       if (!registry)
         throw new BookMCPError("No book project found. Run book_init first.");
+
+      const language = (languageOverride ?? projectLanguage().tag).trim();
+      if (!isValidLanguageTag(language)) {
+        throw new BookMCPError(`"${language}" is not a BCP 47 language tag.`);
+      }
+      const labels = labelsFor(language);
 
       const chapters = selectChapters(registry, includeChapters);
       if (chapters.length === 0) {
@@ -267,53 +350,129 @@ export function registerEpubTools(server: McpServer): void {
       const profile = getAuthorProfile();
       const author = profile?.name?.trim() || registry.author;
 
+      // The identifier: one passed in, else the e-book's ISBN, else a UUID
+      // kept in metadata.json — stable, so a reader's library recognises a
+      // re-exported draft as the same book instead of adding a second copy.
+      let published = getMetadata();
+      let identifierSource: string;
+      let bookId: string;
+      if (identifier?.trim()) {
+        bookId = identifier.trim();
+        identifierSource = "the identifier parameter";
+      } else if (published?.isbn?.ebook) {
+        bookId = `urn:isbn:${published.isbn.ebook}`;
+        identifierSource = "the e-book ISBN in metadata.json";
+      } else {
+        published = await updateMetadata((m) => {
+          if (m.uuid) return false;
+          m.uuid = randomUUID();
+        });
+        bookId = `urn:uuid:${published.uuid}`;
+        identifierSource =
+          "a stable UUID kept in metadata.json (set an e-book ISBN with book_metadata_set before publishing)";
+      }
+
       const meta: BookMetadata = {
         title: registry.title,
         author,
         language,
-        identifier: identifier?.trim() || `urn:uuid:${randomUUID()}`,
+        identifier: bookId,
         modified: epubTimestamp(new Date()),
         genre: registry.genre,
-        description,
+        description: description ?? published?.description,
+        subtitle: published?.subtitle,
+        series: published?.series,
+        publisher: published?.publisher,
+        date: published?.publicationDate,
+        rights: published ? rightsStatement(published, registry) : undefined,
+        subjects: [registry.genre, ...(published?.categories ?? [])].filter(Boolean),
+        contributors: published?.contributors ?? [],
       };
 
-      const warnings: string[] = [];
-      const entries: { id: string; href: string; title: string }[] = [];
-      const documents: { href: string; xhtml: string }[] = [];
-
-      chapters.forEach((chapter, index) => {
-        const markdown = readChapterFile(chapter.filename);
-        if (!markdown.trim()) {
-          warnings.push(
-            `Chapter "${chapter.title}" (${chapter.filename}) is missing or empty on disk and was skipped.`
-          );
-          return;
-        }
-
-        // Sequential file names rather than the chapter's own: a chapter id is
-        // safe, but a slug is not guaranteed to be a legal, unique href.
-        const href = `chapter-${String(index + 1).padStart(3, "0")}.xhtml`;
-        const body = markdownToHtml(markdown, { xhtml: true });
-
-        // A chapter whose markdown carries no heading of its own still needs
-        // one, or it is unreachable from the table of contents by sight.
-        const hasHeading = /^<h1/m.test(body);
-        const withHeading = hasHeading
-          ? body
-          : `<h1>${escapeHtml(chapter.title)}</h1>\n${body}`;
-
-        entries.push({ id: `chapter-${index + 1}`, href, title: chapter.title });
-        documents.push({
-          href,
-          xhtml: xhtmlDocument(chapter.title, withHeading, language),
-        });
-      });
-
-      if (entries.length === 0) {
+      const book = assembleBook(registry, chapters, { language, author });
+      const warnings = book.warnings;
+      if (book.chapterCount === 0) {
         throw new BookMCPError(
           "Every selected chapter is empty on disk, so there is nothing to export."
         );
       }
+
+      const html = (md: string) => markdownToHtml(md, { xhtml: true });
+      const inline = (md: string) => inlineMarkdownToHtml(md, { xhtml: true });
+
+      const matterDoc = (section: RenderedMatter): EpubDoc => {
+        const typeAttr = section.epubType ? ` epub:type="${section.epubType}"` : "";
+        const heading = section.heading ? `<h1>${inline(section.heading)}</h1>\n` : "";
+        return {
+          id: `matter-${section.type}`,
+          href: `matter-${section.type.replace(/_/g, "-")}.xhtml`,
+          title: section.navTitle,
+          xhtml: xhtmlDocument(
+            section.navTitle,
+            `<section${typeAttr} class="matter ${section.type.replace(/_/g, "-")}">\n${heading}${html(section.markdown)}\n</section>`,
+            language
+          ),
+          listed: Boolean(section.heading),
+          nested: false,
+        };
+      };
+
+      const beforeContents = book.front.filter((s) => s.beforeContents).map(matterDoc);
+      const afterContents = book.front.filter((s) => !s.beforeContents).map(matterDoc);
+      const backDocs = book.back.map(matterDoc);
+
+      // Sequential file names rather than the chapter's own: a chapter id is
+      // safe, but a slug is not guaranteed to be a legal, unique href.
+      const bodyDocs: EpubDoc[] = [];
+      let chapterIndex = 0;
+      let insidePart = false;
+      for (const item of book.body) {
+        if (item.kind === "part") {
+          insidePart = true;
+          bodyDocs.push({
+            id: `part-${item.number}`,
+            href: `part-${String(item.number).padStart(2, "0")}.xhtml`,
+            title: partEntry(item),
+            xhtml: xhtmlDocument(
+              partEntry(item),
+              `<section epub:type="part" class="part">\n${
+                item.label ? `<p class="part-label">${escapeHtml(item.label)}</p>\n` : ""
+              }<h1>${inline(item.title)}</h1>\n</section>`,
+              language
+            ),
+            listed: true,
+            nested: false,
+          });
+          continue;
+        }
+
+        chapterIndex++;
+        const label = item.label ? `<p class="chapter-label">${escapeHtml(item.label)}</p>\n` : "";
+        bodyDocs.push({
+          id: `chapter-${chapterIndex}`,
+          href: `chapter-${String(chapterIndex).padStart(3, "0")}.xhtml`,
+          title: chapterEntry(item),
+          xhtml: xhtmlDocument(
+            item.heading,
+            `<section epub:type="chapter" class="chapter">\n${label}<h1>${inline(item.heading)}</h1>\n${html(item.body)}\n</section>`,
+            language
+          ),
+          listed: true,
+          nested: insidePart && Boolean(item.chapter.part?.trim()),
+        });
+        if (!item.chapter.part?.trim()) insidePart = false;
+      }
+
+      const listedDocs = [...afterContents, ...bodyDocs, ...backDocs];
+      const allDocs = [...beforeContents, ...listedDocs];
+      const entries = bodyDocs.filter((d) => d.id.startsWith("chapter-"));
+      const spine = [
+        { id: "titlepage", href: "titlepage.xhtml" },
+        ...beforeContents,
+        { id: "nav", href: "nav.xhtml" },
+        ...listedDocs,
+      ];
+      const copyright = beforeContents.find((d) => d.id === "matter-copyright")?.href ?? null;
 
       const zip = new JSZip();
 
@@ -335,10 +494,13 @@ export function registerEpubTools(server: McpServer): void {
 
       zip.file("OEBPS/style.css", STYLESHEET);
       zip.file("OEBPS/titlepage.xhtml", buildTitlePage(meta));
-      zip.file("OEBPS/nav.xhtml", buildNavDocument(meta, entries));
-      zip.file("OEBPS/toc.ncx", buildNcx(meta, entries));
-      zip.file("OEBPS/content.opf", buildPackageDocument(meta, entries));
-      for (const document of documents) {
+      zip.file(
+        "OEBPS/nav.xhtml",
+        buildNavDocument(meta, listedDocs, labels, bodyDocs[0]?.href ?? null, copyright)
+      );
+      zip.file("OEBPS/toc.ncx", buildNcx(meta, listedDocs));
+      zip.file("OEBPS/content.opf", buildPackageDocument(meta, spine));
+      for (const document of allDocs) {
         zip.file(`OEBPS/${document.href}`, document.xhtml);
       }
 
@@ -376,12 +538,16 @@ export function registerEpubTools(server: McpServer): void {
                     : "registry.json",
                   language: meta.language,
                   identifier: meta.identifier,
+                  identifierSource,
+                  ...(meta.subtitle ? { subtitle: meta.subtitle } : {}),
+                  ...(meta.series ? { series: meta.series } : {}),
                   modified: meta.modified,
                 },
-                tableOfContents: entries.map((e, i) => ({
+                tableOfContents: listedDocs.map((e, i) => ({
                   order: i + 1,
                   title: e.title,
                   href: e.href,
+                  ...(e.nested ? { nested: true } : {}),
                 })),
                 ...(warnings.length ? { warnings } : {}),
               },

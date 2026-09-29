@@ -66,7 +66,9 @@ export function registerPreviewTools(server: McpServer): void {
 
       const { markdown, wordCount: wc, chapterCount, warnings } = compileManuscript(registry, chapters);
       const htmlContent = markdownToHtml(markdown);
-      const html = buildReaderPage(registry.title, registry.author, htmlContent, wc);
+      const html = buildReaderPage(registry.title, registry.author, htmlContent, wc, {
+        language: registry.language,
+      });
 
       safeWriteFile(outPath, html, "preview HTML");
 

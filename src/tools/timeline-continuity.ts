@@ -1,5 +1,6 @@
 import { Registry, StoryBible, TimelineEvent } from "../storage/schema";
 import { normalizeForCompare, wholeWordRegExp } from "../utils/text";
+import { LanguageRules } from "../lang/types";
 
 export interface TimelineFlag {
   type: "timeline";
@@ -10,33 +11,27 @@ export interface TimelineFlag {
 
 // Weekday names carry most of the in-story time an author writes down
 // ("Saturday night, ~23:30"), and they are unambiguous enough to compare
-// without parsing a date out of prose.
-const WEEKDAYS = [
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-  "sunday",
-];
+// without parsing a date out of prose. "the morning after" and "that night"
+// describe the same day differently, so only coarse parts of the day are
+// compared — enough to catch a scene logged at night and drafted at dawn.
+// Both come from the book's language rules.
 
-// "the morning after" and "that night" describe the same day differently, so
-// only these coarse buckets are compared — enough to catch a scene logged at
-// night and drafted at dawn.
-const DAY_PARTS: Record<string, string[]> = {
-  morning: ["morning", "dawn", "sunrise", "daybreak"],
-  afternoon: ["afternoon", "midday", "noon"],
-  evening: ["evening", "dusk", "sunset", "twilight"],
-  night: ["night", "midnight", "small hours"],
-};
+export const LANGUAGE_DEPENDENT_TIMELINE_CHECKS = ["timelineWeekdays", "timelineTimeOfDay"];
 
 function mentionedTerms(text: string, terms: string[]): string[] {
   return terms.filter((term) => wholeWordRegExp(term).test(text));
 }
 
-function dayPartsIn(text: string): string[] {
-  return Object.entries(DAY_PARTS)
+// A day by its first name, whichever of its names the text used: "Sonnabend"
+// and "Samstag" are the same day and must not contradict each other.
+function weekdaysIn(text: string, rules: LanguageRules): string[] {
+  return rules.weekdays
+    .filter((names) => mentionedTerms(text, names).length > 0)
+    .map((names) => names[0]);
+}
+
+function dayPartsIn(text: string, rules: LanguageRules): string[] {
+  return Object.entries(rules.dayParts)
     .filter(([, synonyms]) => mentionedTerms(text, synonyms).length > 0)
     .map(([part]) => part);
 }
@@ -54,11 +49,13 @@ export function checkTimeline(
   content: string,
   registry: Registry,
   bible: StoryBible,
-  events: TimelineEvent[]
-): TimelineFlag[] {
+  events: TimelineEvent[],
+  rules: LanguageRules | null
+): { flags: TimelineFlag[]; skipped: string[] } {
   const flags: TimelineFlag[] = [];
+  const skipped = rules ? [] : [...LANGUAGE_DEPENDENT_TIMELINE_CHECKS];
   const chapter = registry.chapters.find((c) => c.id === chapterId);
-  if (!chapter) return flags;
+  if (!chapter) return { flags, skipped };
 
   const normalizedContent = normalizeForCompare(content);
   const ownEvents = events.filter((e) => e.chapterId === chapterId);
@@ -95,12 +92,12 @@ export function checkTimeline(
 
   // 2. The prose naming a different weekday or time of day than the event
   //    logged for this very chapter.
-  for (const event of ownEvents) {
-    if (!event.inStoryTime) continue;
+  for (const event of rules ? ownEvents : []) {
+    if (!event.inStoryTime || !rules) continue;
     const loggedTime = normalizeForCompare(event.inStoryTime);
 
-    const loggedDays = mentionedTerms(loggedTime, WEEKDAYS);
-    const draftedDays = mentionedTerms(normalizedContent, WEEKDAYS);
+    const loggedDays = weekdaysIn(loggedTime, rules);
+    const draftedDays = weekdaysIn(normalizedContent, rules);
     const contradictingDays = draftedDays.filter((d) => !loggedDays.includes(d));
     if (loggedDays.length && contradictingDays.length) {
       flags.push({
@@ -111,8 +108,8 @@ export function checkTimeline(
       });
     }
 
-    const loggedParts = dayPartsIn(loggedTime);
-    const draftedParts = dayPartsIn(normalizedContent);
+    const loggedParts = dayPartsIn(loggedTime, rules);
+    const draftedParts = dayPartsIn(normalizedContent, rules);
     const contradictingParts = draftedParts.filter((p) => !loggedParts.includes(p));
     // Only when the draft names exactly one time of day: a chapter that spans
     // morning to night legitimately mentions several.
@@ -160,5 +157,5 @@ export function checkTimeline(
     }
   }
 
-  return flags;
+  return { flags, skipped };
 }
