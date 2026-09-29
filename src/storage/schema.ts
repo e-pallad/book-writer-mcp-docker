@@ -520,3 +520,24 @@ export interface StylesheetEntry {
   /** Default true: "email" and "Email" are different variants. */
   caseSensitive?: boolean;
 }
+
+/** A fact, a source, a note from research — kept where the book can find it. */
+export interface ResearchEntry {
+  id: string;
+  title: string;
+  content: string;
+  /** The citation as it should appear in a bibliography. */
+  source?: string;
+  url?: string;
+  tags: string[];
+  /** Chapters the entry is used in. */
+  chapterIds: string[];
+  /** Listed in the book's bibliography. */
+  bibliography: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Research {
+  entries: ResearchEntry[];
+}

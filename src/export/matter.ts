@@ -9,6 +9,7 @@ import {
   MatterType,
   PublishingMetadata,
   Registry,
+  Research,
   StoryBible,
 } from "../storage/schema";
 import { Labels } from "../lang/types";
@@ -41,7 +42,7 @@ export const MATTER_KINDS: Record<MatterType, MatterKind> = {
   afterword: { position: "back", order: 110, beforeContents: false, headed: true, auto: false, epubType: "afterword" },
   acknowledgements: { position: "back", order: 120, beforeContents: false, headed: true, auto: false, epubType: "acknowledgments" },
   glossary: { position: "back", order: 130, beforeContents: false, headed: true, auto: false, epubType: "glossary" },
-  bibliography: { position: "back", order: 140, beforeContents: false, headed: true, auto: false, epubType: "bibliography" },
+  bibliography: { position: "back", order: 140, beforeContents: false, headed: true, auto: true, epubType: "bibliography" },
   about_author: { position: "back", order: 150, beforeContents: false, headed: true, auto: true },
   also_by: { position: "back", order: 160, beforeContents: false, headed: true, auto: false },
 };
@@ -68,6 +69,9 @@ export interface MatterSources {
   bible: StoryBible | null;
   profile: AuthorProfile | null;
   labels: Labels;
+  research?: Research | null;
+  /** For sorting the bibliography the way the book's language does. */
+  language?: string;
 }
 
 const ROLE_ORDER: Character["role"][] = ["protagonist", "antagonist", "supporting"];
@@ -124,6 +128,21 @@ function aboutAuthor({ profile }: MatterSources): string | null {
 }
 
 /**
+ * The sources marked for the bibliography, alphabetically as the book's
+ * language sorts, each with its link when it has one.
+ */
+export function bibliography({ research, language }: MatterSources): string | null {
+  const entries = (research?.entries ?? []).filter((e) => e.bibliography);
+  if (!entries.length) return null;
+  const collator = new Intl.Collator(language ?? "en", { sensitivity: "base" });
+  return entries
+    .map((e) => ({ text: (e.source?.trim() || e.title).trim(), url: e.url?.trim() }))
+    .sort((a, b) => collator.compare(a.text, b.text))
+    .map((e) => `- ${e.text}${e.url ? ` — ${e.url}` : ""}`)
+    .join("\n");
+}
+
+/**
  * The text a section will print: what the author wrote, or what the project
  * says when the section is one it can write itself. Null when there is nothing
  * to print — an automatic section whose source is still empty.
@@ -137,6 +156,8 @@ export function matterContent(section: MatterSection, sources: MatterSources): s
       return dramatisPersonae(sources);
     case "about_author":
       return aboutAuthor(sources);
+    case "bibliography":
+      return bibliography(sources);
     default:
       return null;
   }
@@ -149,6 +170,8 @@ export function emptyReason(type: MatterType): string {
       return "The cast list is empty: the story bible has no characters above a minor role.";
     case "about_author":
       return "There is no author bio yet. Write one with book_author_update_profile, or give the section content.";
+    case "bibliography":
+      return "No research entry is marked for the bibliography. Mark sources with book_research_add bibliography=true.";
     default:
       return "The section has no content.";
   }

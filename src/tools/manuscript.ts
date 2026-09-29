@@ -8,6 +8,7 @@ import {
   getStoryBible,
   getOutline,
   getNotes,
+  getResearch,
   initProject,
   readChapterFile,
   writeChapterFile,
@@ -156,6 +157,15 @@ function findReferences(chapter: ChapterMeta): string[] {
     const open = notes.filter((n) => n.status === "open").length;
     references.push(
       `${notes.length} note(s) on this chapter (${open} open) now point at a deleted chapter.`
+    );
+  }
+
+  const research = (getResearch()?.entries ?? []).filter((e) => e.chapterIds.includes(chapter.id));
+  if (research.length) {
+    references.push(
+      `${research.length} research entr${research.length === 1 ? "y is" : "ies are"} filed under this chapter: ${research
+        .map((e) => `"${e.title}"`)
+        .join(", ")}.`
     );
   }
 

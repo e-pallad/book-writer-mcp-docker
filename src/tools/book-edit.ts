@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
+  getResearch,
   getStoryBible,
   readChapterFile,
   updateOutlineIfPresent,
@@ -18,6 +19,7 @@ import { BookMCPError } from "../utils/errors";
 import { escapeRegExp, normalizeForCompare, toNFC } from "../utils/text";
 import { findText, MatchOptions, snippetAt, spliceMatches } from "../utils/match";
 import { findPlaceholders } from "../utils/placeholders";
+import { researchFor } from "./research";
 
 function jsonResult(payload: unknown) {
   return {
@@ -88,12 +90,18 @@ export function registerBookEditTools(server: McpServer): void {
     },
     async ({ chapters, kind }) => {
       const registry = requireProject();
+      const research = getResearch()?.entries ?? [];
       const wanted = kind?.trim().toUpperCase();
       const byKind: Record<string, number> = {};
       const results = chaptersToSearch(registry, chapters).flatMap((chapter) => {
-        const found = findPlaceholders(readChapterFile(chapter.filename)).filter(
-          (p) => !wanted || p.kind === wanted
-        );
+        const found = findPlaceholders(readChapterFile(chapter.filename))
+          .filter((p) => !wanted || p.kind === wanted)
+          // A placeholder that names what to look up is matched to the
+          // research already on file for it.
+          .map((p) => {
+            const related = p.note ? researchFor(p.note, research) : [];
+            return related.length ? { ...p, research: related } : p;
+          });
         for (const p of found) byKind[p.kind] = (byKind[p.kind] ?? 0) + 1;
         return found.length
           ? [{ chapterId: chapter.id, title: chapter.title, status: chapter.status, placeholders: found }]

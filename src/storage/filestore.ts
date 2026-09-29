@@ -17,6 +17,7 @@ import {
   Scenes,
   Concept,
   Stylesheet,
+  Research,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
@@ -385,6 +386,23 @@ export function updateStylesheet(
   });
 }
 
+// Research
+export function getResearch(): Research | null {
+  return readJSON<Research>(mcpPath("research.json"));
+}
+
+/** Amends the research notes, creating the file on first use. */
+export function updateResearch(
+  mutate: (research: Research) => unknown | Promise<unknown>
+): Promise<Research> {
+  return withFileLock(mcpPath("research.json"), async () => {
+    const research = getResearch() ?? { entries: [] };
+    const outcome = await mutate(research);
+    if (outcome !== ABORT) writeJSON(mcpPath("research.json"), research);
+    return research;
+  });
+}
+
 // AI content disclosure
 export function getAiDisclosure(): AiDisclosure | null {
   return readJSON<AiDisclosure>(mcpPath("ai-disclosure.json"));
@@ -640,5 +658,6 @@ export function getProjectPaths() {
     scenesPath: mcpPath("scenes.json"),
     conceptPath: mcpPath("concept.json"),
     stylesheetPath: mcpPath("stylesheet.json"),
+    researchPath: mcpPath("research.json"),
   };
 }

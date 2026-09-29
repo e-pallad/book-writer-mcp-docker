@@ -123,6 +123,14 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 3. Act on the health findings before drafting more: an open thread or a timeline
    contradiction is cheaper to fix now than after another ten chapters
 
+## Workflow for Research
+- `book_research_add` for every fact the book relies on, with its `source`,
+  `tags` and the `chapters` it is used in; `bibliography=true` for sources to cite
+- `book_todo_list kind="RECHERCHE"` shows the gaps and the research already on
+  file for each; `book_research_list` finds what is known
+- NEVER invent a fact to fill a `[RECHERCHE: …]` gap — ask the author or leave it
+- `book_matter_set type=bibliography` puts the cited sources in the back matter
+
 ## Workflow for Feedback from Test Readers or the Editor
 1. `book_note_add` for each remark, with `source` (who said it), `kind` and the
    exact `anchorText` it is about — never paraphrase the anchor

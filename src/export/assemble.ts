@@ -7,6 +7,7 @@ import {
   getAuthorProfile,
   getMatter,
   getMetadata,
+  getResearch,
   getStoryBible,
   readChapterFile,
 } from "../storage/filestore";
@@ -101,6 +102,8 @@ export function assembleBook(
       bible: getStoryBible(),
       profile: getAuthorProfile(),
       labels,
+      research: getResearch(),
+      language,
     });
     front = rendered.sections.filter((s) => s.position === "front");
     back = rendered.sections.filter((s) => s.position === "back");

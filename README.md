@@ -231,6 +231,14 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_theme_add` / `book_theme_list` / `book_theme_remove` | The book's themes |
 | `book_continuity_check` | Cross-reference a chapter against the story bible |
 
+### Research
+
+| Tool | What it does |
+|------|-------------|
+| `book_research_add` | Keep a fact, a source or a note, with tags, the chapters it is used in, and whether it goes in the bibliography |
+| `book_research_list` | Find entries by tag, chapter or text — or one in full by id |
+| `book_research_update` / `book_research_delete` | Change or remove an entry |
+
 ### Timeline
 
 | Tool | What it does |
@@ -801,6 +809,30 @@ third-person book, `book_continuity_check` flags a scene whose point-of-view
 character is never named in it: either the noted POV is wrong, or the scene
 drifted into someone else's head.
 
+## Research
+
+Research is its own step of writing a book — for a historical novel as much as
+for non-fiction — and its results belong where the book can find them.
+`book_research_add` keeps an entry: a title, the fact or excerpt, the citation
+as a bibliography would print it, a link, tags, and the chapters it is used in
+(by id or title; a chapter not written yet is kept, with a warning).
+
+```
+book_research_add title="Gezeiten im Hamburger Hafen" content="Tidenhub etwa 3,6 m …" \
+  source="Bundesamt für Seeschifffahrt: Gezeitentafeln 1997. Hamburg 1996." \
+  tags=["Hafen", "Wasser"] chapters=["Die Gezeiten"] bibliography=true
+book_research_list tag="Hafen"
+book_research_list chapterId="Die Gezeiten"
+```
+
+`book_research_list` finds entries by tag, chapter or text (content is
+shortened in a list; ask for one by `id` for all of it) and marks entries filed
+under a chapter that no longer exists — deleting a chapter reports them too. A
+draft's `[RECHERCHE: Gezeiten]` placeholder is matched to the research on file
+for it in `book_todo_list`. Entries marked `bibliography=true` (which needs a
+citation) become the **bibliography** — add it with `book_matter_set
+type=bibliography` and it is written from them at every export.
+
 ## Placeholders While Drafting
 
 The rule of a first draft is to keep going. Where a name, a fact or a date is
@@ -1021,6 +1053,7 @@ your-book/
     scenes.json         # What is noted about each scene
     concept.json        # Premise, logline, readership, comparable titles
     stylesheet.json     # The copy-edit style sheet
+    research.json       # Research notes and sources
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
@@ -1088,7 +1121,7 @@ every export — Markdown, DOCX, EPUB and the preview, which all build on
 | Body | Part pages and chapters |
 | After the last chapter | **Afterword**, **acknowledgements**, **glossary**, **bibliography**, **about the author**, **also by** |
 
-Three sections can write themselves when given no content, from data the
+Four sections can write themselves when given no content, from data the
 project already has — and are written again at every export, so they are never
 stale:
 
@@ -1098,7 +1131,9 @@ stale:
 - the **cast list** from the story bible: every character above a minor role,
   main roles first, with the first sentence of their description. Read it for
   spoilers before publishing, or give the section text of its own;
-- **about the author** from the author profile's bio.
+- **about the author** from the author profile's bio;
+- the **bibliography** from the research entries marked for it, sorted the
+  way the book's language sorts (*Ärztekammer* before *Bauer*).
 
 Headings come in the book's language (*Danksagung*, *Acknowledgements*) and can
 be overridden with `title`; a dedication, an epigraph and the copyright page

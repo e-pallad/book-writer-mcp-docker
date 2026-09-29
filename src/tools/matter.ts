@@ -4,6 +4,7 @@ import {
   getAuthorProfile,
   getMatter,
   getMetadata,
+  getResearch,
   getStoryBible,
   updateMatter,
 } from "../storage/filestore";
@@ -37,6 +38,8 @@ function describe(section: MatterSection) {
     bible: getStoryBible(),
     profile: getAuthorProfile(),
     labels,
+    research: getResearch(),
+    language: projectLanguage().tag,
   });
   return {
     type: section.type,
@@ -52,14 +55,14 @@ function describe(section: MatterSection) {
 export function registerMatterTools(server: McpServer): void {
   server.tool(
     "book_matter_set",
-    "Add or replace a piece of front or back matter — the parts of a book that are not chapters. The exports set them in the classic order: copyright page, dedication, epigraph, contents, foreword, preface, cast list; after the last chapter the afterword, acknowledgements, glossary, bibliography, about the author, also by. The copyright page, the cast list and the author's bio can be left without content: they are then written at export time from the metadata, the story bible and the author profile.",
+    "Add or replace a piece of front or back matter — the parts of a book that are not chapters. The exports set them in the classic order: copyright page, dedication, epigraph, contents, foreword, preface, cast list; after the last chapter the afterword, acknowledgements, glossary, bibliography, about the author, also by. The copyright page, the cast list, the author's bio and the bibliography can be left without content: they are then written at export time from the metadata, the story bible, the author profile and the research notes marked for the bibliography.",
     {
       type: TYPE_SCHEMA,
       content: z
         .string()
         .optional()
         .describe(
-          "The section's text as markdown. Leave out for copyright, dramatis_personae and about_author to have it written from the project's data."
+          "The section's text as markdown. Leave out for copyright, dramatis_personae, about_author and bibliography to have it written from the project's data."
         ),
       title: z
         .string()
@@ -92,7 +95,7 @@ export function registerMatterTools(server: McpServer): void {
         // the text again.
         if (!kind.auto && !section.content.trim()) {
           throw new BookMCPError(
-            `A ${type.replace(/_/g, " ")} needs content: only copyright, dramatis_personae and about_author can be written from the project's data.`
+            `A ${type.replace(/_/g, " ")} needs content: only copyright, dramatis_personae, about_author and bibliography can be written from the project's data.`
           );
         }
         section.updatedAt = new Date().toISOString();
