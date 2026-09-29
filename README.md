@@ -191,6 +191,7 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_chapter_find` | Find text in a chapter with paragraph numbers and context |
 | `book_find` | Find text across the whole book (whole words, case-insensitive if asked) |
 | `book_replace_text` | Replace text across the book — a dry run unless told otherwise |
+| `book_todo_list` | Placeholders left while drafting: `[TK]`, `[TODO: …]`, `[RECHERCHE: …]` |
 | `book_chapter_replace_text` | Replace one passage in a chapter, leaving the rest untouched |
 | `book_chapter_rename` | Rename a chapter (registry, file name, heading, outline) |
 | `book_chapter_delete` | Delete a chapter (file moves to `.book-mcp/trash/`) |
@@ -654,6 +655,29 @@ chapter exactly as before.
 ```
 book_chapter_read chapterId="ch-003" fromParagraph=12 toParagraph=14
 ```
+
+## Placeholders While Drafting
+
+The rule of a first draft is to keep going. Where a name, a fact or a date is
+missing, leave a marker and write on:
+
+```
+Sie nahm die Fähre nach [TK].
+Der Hafenmeister hieß [TODO: Name aus dem Adressbuch 1997].
+[RECHERCHE: Gezeiten am 14. Juni]
+```
+
+`[TK]` (journalism's *to come*), `[TODO …]`, `[FIXME …]`, `[RECHERCHE …]`,
+`[PRÜFEN …]`, `[CHECK …]`, `[XXX]` and a bare capital `TK` are recognised, with
+the note after them. Only these words open a marker, so an ordinary bracket —
+`[sic]`, a stage direction — is left alone, and neither `TKO` nor a lowercase
+`tk` counts.
+
+`book_todo_list` lists each one with chapter, paragraph and context, and can
+filter by kind (`kind="RECHERCHE"` for a research session). While any remain,
+every export and the preview warn; `book_chapter_update status="final"` warns
+for the chapter; and the dashboard counts them under *draft* — as serious once
+they sit in a chapter marked review or final.
 
 ## Notes from Test Readers and the Editor
 

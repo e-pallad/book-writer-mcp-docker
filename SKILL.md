@@ -73,8 +73,11 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 
 ## Workflow for a Writing Session
 1. `book_progress` — today's words against the goal, the streak, the deadline
-2. Write; every chapter change is logged automatically
-3. `book_progress` again at the end, to tell the author where they stand
+2. Write; every chapter change is logged automatically. Where a fact, name or
+   date is missing, write `[TK]` or `[RECHERCHE: …]` and keep going rather than
+   stopping or inventing it
+3. `book_todo_list` — the gaps to fill in a research session
+4. `book_progress` again at the end, to tell the author where they stand
 - Set the schedule with `book_project_update dailyWordGoal=... deadline=...
   timezone=...` — the time zone decides where one writing day ends
 

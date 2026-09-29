@@ -21,6 +21,7 @@ import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare, slugify, splitParagraphs } from "../utils/text";
 import { snapshotIfChanged, trashHistory } from "../storage/history";
 import { recordWords, saveChapterContent } from "../storage/writing-log";
+import { findPlaceholders } from "../utils/placeholders";
 import { chaptersInOrder, requireProject, resolveChapter } from "../storage/chapters";
 import { assembleBook } from "../export/assemble";
 import { measureExtent } from "../export/normseite";
@@ -540,6 +541,15 @@ export function registerManuscriptTools(server: McpServer): void {
             `${open.length} open note(s) on this chapter (${[...new Set(open.map((n) => n.source))].join(
               ", "
             )}). See them with book_note_list chapterId="${chapter.id}".`
+          );
+        }
+        const placeholders = findPlaceholders(readChapterFile(chapter.filename));
+        if (placeholders.length) {
+          warnings.push(
+            `${placeholders.length} placeholder(s) still in the text (${placeholders
+              .slice(0, 3)
+              .map((p) => p.marker)
+              .join(", ")}${placeholders.length > 3 ? ", …" : ""}). See them with book_todo_list chapters=["${chapter.id}"].`
           );
         }
       }

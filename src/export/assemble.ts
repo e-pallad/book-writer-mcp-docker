@@ -16,6 +16,7 @@ import { Labels } from "../lang/types";
 import { leadingHeadingText, stripLeadingHeading } from "../utils/markdown";
 import { chaptersInOrder } from "../storage/chapters";
 import { RenderedMatter, renderMatter } from "./matter";
+import { findPlaceholders, placeholderWarning } from "../utils/placeholders";
 
 export interface PartItem {
   kind: "part";
@@ -145,6 +146,21 @@ export function assembleBook(
     });
     chapterCount++;
   }
+
+  // A draft's placeholders must not reach readers unnoticed.
+  const placeholderCounts = [
+    ...body.flatMap((item) =>
+      item.kind === "chapter"
+        ? [{ chapter: item.chapter.id, count: findPlaceholders(item.body).length }]
+        : []
+    ),
+    ...[...front, ...back].map((section) => ({
+      chapter: section.navTitle,
+      count: findPlaceholders(section.markdown).length,
+    })),
+  ].filter((c) => c.count > 0);
+  const placeholderNote = placeholderWarning(placeholderCounts);
+  if (placeholderNote) warnings.push(placeholderNote);
 
   return {
     title: registry.title,

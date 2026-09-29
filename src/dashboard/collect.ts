@@ -12,6 +12,7 @@ import {
   readChapterFile,
 } from "../storage/filestore";
 import { missingMetadata } from "../publishing/metadata";
+import { findPlaceholders } from "../utils/placeholders";
 import { dayKey, projectTimeZone } from "../storage/writing-log";
 import { totalsByDay } from "../storage/progress";
 import { listSnapshots, readSnapshot } from "../storage/history";
@@ -415,6 +416,24 @@ function buildHealth(
       detail: stale
         .map((c) => `${c.title} (${daysBetween(c.updatedAt, now)}d)`)
         .join(", "),
+    });
+  }
+
+  // Placeholders left while drafting: fine in a draft, a problem in a chapter
+  // marked for review or final.
+  const placeholders = chapters
+    .map((c) => ({ chapter: c, count: findPlaceholders(texts.get(c.id) ?? "").length }))
+    .filter((p) => p.count > 0);
+  if (placeholders.length) {
+    const total = placeholders.reduce((sum, p) => sum + p.count, 0);
+    const late = placeholders.filter((p) => p.chapter.status === "review" || p.chapter.status === "final");
+    findings.push({
+      severity: late.length ? "serious" : "warning",
+      area: "draft",
+      summary: `${total} placeholder(s) to fill`,
+      detail: `${placeholders.map((p) => `${p.chapter.title} (${p.count})`).join(", ")}${
+        late.length ? `. ${late.length} chapter(s) with placeholders are marked review or final.` : "."
+      } book_todo_list shows each one.`,
     });
   }
 

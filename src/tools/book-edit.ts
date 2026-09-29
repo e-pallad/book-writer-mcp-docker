@@ -17,6 +17,7 @@ import { selectChapters } from "../export/select";
 import { BookMCPError } from "../utils/errors";
 import { escapeRegExp, normalizeForCompare, toNFC } from "../utils/text";
 import { findText, MatchOptions, snippetAt, spliceMatches } from "../utils/match";
+import { findPlaceholders } from "../utils/placeholders";
 
 function jsonResult(payload: unknown) {
   return {
@@ -74,6 +75,40 @@ function inflectedForms(text: string, name: string): Map<string, number> {
 }
 
 export function registerBookEditTools(server: McpServer): void {
+  // book_todo_list
+  server.tool(
+    "book_todo_list",
+    "List the placeholders left in the text while drafting — [TK], [TODO: …], [RECHERCHE: …], [PRÜFEN: …], [FIXME], [CHECK], [XXX] and a bare TK — with chapter, paragraph and context. Exports warn while any remain.",
+    {
+      chapters: chaptersSchema,
+      kind: z
+        .string()
+        .optional()
+        .describe('Only one kind, e.g. "RECHERCHE" or "TK"'),
+    },
+    async ({ chapters, kind }) => {
+      const registry = requireProject();
+      const wanted = kind?.trim().toUpperCase();
+      const byKind: Record<string, number> = {};
+      const results = chaptersToSearch(registry, chapters).flatMap((chapter) => {
+        const found = findPlaceholders(readChapterFile(chapter.filename)).filter(
+          (p) => !wanted || p.kind === wanted
+        );
+        for (const p of found) byKind[p.kind] = (byKind[p.kind] ?? 0) + 1;
+        return found.length
+          ? [{ chapterId: chapter.id, title: chapter.title, status: chapter.status, placeholders: found }]
+          : [];
+      });
+      const total = results.reduce((sum, r) => sum + r.placeholders.length, 0);
+      return jsonResult({
+        total,
+        byKind,
+        chapters: results,
+        ...(total === 0 ? { message: "No placeholders left." } : {}),
+      });
+    }
+  );
+
   // book_find
   server.tool(
     "book_find",
