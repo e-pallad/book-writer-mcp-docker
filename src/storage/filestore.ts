@@ -15,6 +15,7 @@ import {
   Matter,
   Notes,
   Scenes,
+  Concept,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
@@ -346,6 +347,26 @@ export function updateScenes(
   });
 }
 
+// Concept
+export function getConcept(): Concept | null {
+  return readJSON<Concept>(mcpPath("concept.json"));
+}
+
+/** Amends the concept, creating it on first use. */
+export function updateConcept(
+  mutate: (concept: Concept) => unknown | Promise<unknown>
+): Promise<Concept> {
+  return withFileLock(mcpPath("concept.json"), async () => {
+    const concept = getConcept() ?? { updatedAt: "" };
+    const outcome = await mutate(concept);
+    if (outcome !== ABORT) {
+      concept.updatedAt = new Date().toISOString();
+      writeJSON(mcpPath("concept.json"), concept);
+    }
+    return concept;
+  });
+}
+
 // AI content disclosure
 export function getAiDisclosure(): AiDisclosure | null {
   return readJSON<AiDisclosure>(mcpPath("ai-disclosure.json"));
@@ -599,5 +620,6 @@ export function getProjectPaths() {
     matterPath: mcpPath("matter.json"),
     notesPath: mcpPath("notes.json"),
     scenesPath: mcpPath("scenes.json"),
+    conceptPath: mcpPath("concept.json"),
   };
 }

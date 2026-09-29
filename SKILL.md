@@ -10,9 +10,11 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 ## Workflow for Starting a New Book
 1. `book_init` — initialize project in current directory; pass `language`
    (e.g. `"de"`) for any book not written in English
-2. `book_style_set` — capture voice, tone, POV before writing anything
-3. `book_outline_set` — structure before drafting
-4. Add key characters via `book_character_add` before Chapter 1
+2. `book_concept_set` — premise, logline, readership, comparable titles: what
+   the book is, before any chapter exists
+3. `book_style_set` — capture voice, tone, POV before writing anything
+4. `book_outline_set` — structure before drafting
+5. Add key characters via `book_character_add` before Chapter 1
 
 ## Workflow for Plan against Manuscript
 - Create chapters from outline entries with the same title, or pass
@@ -128,6 +130,13 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
    `preset="standard_manuscript"` (English) with the author's `contact` lines
 4. `book_export_epub` — compile for e-readers and KDP; set `language` and,
    if the book has one, `identifier` to its ISBN
+
+## Workflow for Submitting to Agencies or Publishers
+1. `book_concept_get` — fill what `missingForExpose` names
+2. `book_expose_generate contact=[...]` — the exposé and the sample; pass on
+   every `[TODO]` it lists instead of inventing the missing parts
+3. The synopsis is assembled from chapter synopses: offer to rewrite it as
+   continuous prose, ending included
 
 ## Workflow for Publishing to KDP
 1. `book_metadata_set` — description (the blurb), keywords, categories, ISBNs,

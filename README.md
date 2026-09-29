@@ -178,6 +178,14 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 
 ## Tools Reference
 
+### Concept & Exposé
+
+| Tool | What it does |
+|------|-------------|
+| `book_concept_set` | Premise, logline, central question, readership, comparable titles, unique selling point — or, for non-fiction, the argument and the reader's takeaway |
+| `book_concept_get` | The concept, the themes, and what an exposé still lacks |
+| `book_expose_generate` | An exposé in the book's language, with a sample of the first chapters as a submission manuscript |
+
 ### Manuscript (core workflow)
 
 | Tool | What it does |
@@ -323,6 +331,29 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_author_regenerate_intro` | Regenerate bio from profile data |
 | `book_author_update_intro` | Directly edit the generated bio |
 | `book_author_get_profile` | Retrieve the full author profile |
+
+## Concept and Exposé
+
+Every book starts as a concept, and every submission starts with an exposé.
+`book_concept_set` keeps the concept: fiction or non-fiction, the **premise**,
+the **logline** (the book in one sentence), the **central question**, the
+readership, **comparable titles** with what each shares with this book, and
+what sets it apart; for non-fiction the **core argument** and **what the
+reader takes away**. It reviews what it is given — a logline of three
+sentences is not a logline — and says what an exposé would still lack.
+
+`book_expose_generate` writes the exposé in the book's language (*Exposé* or
+*Book Proposal*) from what the project already knows: the facts with the extent
+in Normseiten and the state of the manuscript, the pitch, the premise, the
+themes, a synopsis assembled from the chapter synopses (or the outline's, for a
+chapter without one), the cast, the comparable titles and the author's bio.
+What the project does not know yet is marked `[TODO: … fehlt — how to add it]`
+in the text and listed in the reply, rather than silently left out.
+
+With it goes the sample agencies ask for: the first chapters — whole chapters,
+never one cut off mid-scene — up to about 30 Normseiten, as a Normseite
+manuscript for a German book (`leseprobe.docx`) or in Standard Manuscript
+Format for an English one (`sample.docx`).
 
 ## The Book's Language
 
@@ -897,6 +928,7 @@ your-book/
     matter.json         # Front and back matter
     notes.json          # Notes from test readers and the editor
     scenes.json         # What is noted about each scene
+    concept.json        # Premise, logline, readership, comparable titles
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification
@@ -912,6 +944,8 @@ your-book/
   manuscript.epub       # Created by book_export_epub
   dashboard.html        # Created by book_dashboard_export
   preview.html          # Created by book_preview
+  expose.md             # Created by book_expose_generate
+  leseprobe.docx        # The sample (sample.docx for an English book)
   preview/
     server.js           # Created by book_preview_server
 ```

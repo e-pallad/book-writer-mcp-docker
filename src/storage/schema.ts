@@ -445,3 +445,23 @@ export interface SceneMeta {
 export interface Scenes {
   scenes: SceneMeta[];
 }
+
+/** What the book is, before it is anything else — the basis of an exposé. */
+export interface Concept {
+  bookType?: "fiction" | "nonfiction";
+  /** The situation the book grows from: who wants what, and what is in the way. */
+  premise?: string;
+  /** The book in one sentence. */
+  logline?: string;
+  /** The question the reader keeps turning pages to have answered. */
+  centralQuestion?: string;
+  targetAudience?: string;
+  comparableTitles?: { title: string; author: string; year?: number; why?: string }[];
+  /** What this book has that the comparable titles do not. */
+  uniqueSellingPoint?: string;
+  /** Non-fiction: the claim the book makes. */
+  coreThesis?: string;
+  /** Non-fiction: what the reader will know or be able to do afterwards. */
+  readerPromise?: string;
+  updatedAt: string;
+}

@@ -20,6 +20,7 @@ import { registerMetadataTools } from "./tools/metadata";
 import { registerMatterTools } from "./tools/matter";
 import { registerNoteTools } from "./tools/notes";
 import { registerSceneTools } from "./tools/scenes";
+import { registerConceptTools } from "./tools/concept";
 
 // Builds a fully configured server instance. Shared by every transport so the
 // stdio and HTTP entry points always expose the same tools.
@@ -32,6 +33,7 @@ export function createServer(): McpServer {
   // Register all tool modules
   registerManuscriptTools(server);
   registerProjectTools(server);
+  registerConceptTools(server);
   registerHistoryTools(server);
   registerChapterEditTools(server);
   registerNoteTools(server);
