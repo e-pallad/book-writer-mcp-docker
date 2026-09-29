@@ -91,6 +91,9 @@ hr {
 .titlepage h1 { text-align: center; margin-bottom: 0.5em; }
 .titlepage .author { font-size: 1.1em; margin: 0; text-indent: 0; }
 .titlepage .genre { font-style: italic; opacity: 0.75; text-indent: 0; }
+blockquote { margin: 1em 2em; }
+blockquote p { text-indent: 0; }
+blockquote p + p { text-indent: 1.2em; }
 nav ol { list-style: none; padding-left: 0; }
 nav li { margin: 0.4em 0; }
 `;

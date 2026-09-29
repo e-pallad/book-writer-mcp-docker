@@ -285,6 +285,26 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_author_update_intro` | Directly edit the generated bio |
 | `book_author_get_profile` | Retrieve the full author profile |
 
+## Writing Chapters: the Markup
+
+Chapters are plain Markdown files, and every output — the preview, the live
+server, the EPUB and the `.docx` — reads them through one parser
+(`src/utils/markdown.ts`), so a chapter looks the same wherever it ends up.
+
+| You type | You get |
+|---|---|
+| `# Title`, `## Section`, `### Subsection` | Headings |
+| `*italic*` or `_italic_`, `**bold**`, `***both***` | Emphasis. Underscores count only at word edges, so `snake_case` is left alone |
+| `\*` | A literal asterisk |
+| A blank line | A new paragraph. A single line break inside a paragraph is kept as a line break |
+| `***`, `* * *`, `---`, `- - -`, `___`, `#`, `⁂`, `~ ~ ~`, `• • •` on a line of their own | A **scene break** |
+| `> …` | A block quote — for an epigraph, a letter, a document quoted in the story |
+
+Every scene-break spelling means the same thing, so use whichever your hands
+already know. The line does not need blank lines around it. `~~~` on its own is
+deliberately *not* a scene break, because most editors read it as the start of
+a code block.
+
 ## Renaming and Deleting Chapters
 
 Chapter titles are not frozen at creation. `book_chapter_rename` changes a

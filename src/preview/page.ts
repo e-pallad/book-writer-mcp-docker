@@ -106,6 +106,13 @@ export function buildReaderPage(
       color: #6b4c2a;
     }
 
+    blockquote {
+      margin: 1.5em 2em;
+      font-style: italic;
+      color: #4a4a4a;
+    }
+    blockquote em { font-style: normal; }
+
     em { font-style: italic; }
     strong { font-weight: 600; }
 
