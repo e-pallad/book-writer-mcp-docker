@@ -110,7 +110,10 @@ update_service() {
     return 0
   fi
 
-  image_ref="$(compose config --images "$service" | head -n1)"
+  # Not `config --images`: for a service with depends_on it also lists the
+  # dependencies' images, in no fixed order
+  image_ref="$(compose config --format json \
+    | python3 -c 'import json, sys; print(json.load(sys.stdin)["services"][sys.argv[1]].get("image", ""))' "$service")"
   [ -n "$image_ref" ] || { report "$service" "no image configured"; return 1; }
 
   # Pull output is only logged when it fails; this runs every few minutes
