@@ -84,6 +84,15 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
   `book_character_update name=...`, which only changes the story bible. Pass on
   the `notReplaced` forms it reports (German genitives like "Maras")
 
+## Workflow for a Revision in Passes
+1. `book_revision_status` — which pass is next
+2. `book_revision_checklist pass=...` — work the questions with the tools it names
+   (`book_prose_check` for the line edit, `book_stylesheet_check` for the copy edit)
+3. `book_revision_mark pass=... chapters=[...]` when a chapter is through
+- Structural before line before copy before proof; say so when the author
+  wants to jump ahead
+- Keep spellings in the style sheet (`book_stylesheet_add`) as they come up
+
 ## Workflow for Revising a Chapter
 1. `book_chapter_history_list` — see what earlier versions exist and how far
    each one is from the current text

@@ -250,6 +250,17 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_outline_link` | Link entries to the chapters written from them, where the title is unambiguous |
 | `book_outline_compare` | Plan against manuscript: not yet written, not planned, moved, retitled |
 
+### Revision
+
+| Tool | What it does |
+|------|-------------|
+| `book_revision_checklist` | What a pass looks at — structural, line, copy, proof — and the tools for it |
+| `book_revision_mark` | Mark a pass done for chapters |
+| `book_revision_status` | Which chapter has had which pass, and which pass is next |
+| `book_stylesheet_add` / `list` / `remove` | The copy-edit style sheet: one spelling per word |
+| `book_stylesheet_check` | Variant spellings left in the book, and mixed or typewriter quotation marks |
+| `book_prose_check` | Filler words, echoes, sentence lengths, long paragraphs, dialogue share, adverbs |
+
 ### Structure
 
 | Tool | What it does |
@@ -839,6 +850,46 @@ chapter still has some (the author still decides), the dashboard lists them
 under *feedback* — as serious when they sit on a chapter already marked final —
 and deleting a chapter reports the notes it leaves behind.
 
+## Revising in Passes
+
+A classic revision goes from the large to the small, because polishing the
+sentences of a scene the structural edit will cut is wasted work:
+
+1. **Structural** (*Entwicklungslektorat*) — does the chapter earn its place;
+   scenes with a goal, a conflict, an outcome; turning points; threads;
+   timeline.
+2. **Line** (*Stillektorat*) — every sentence, filler, echoes, rhythm, voices.
+3. **Copy** (*Korrektorat*) — spelling, consistency, quotation marks, numbers.
+4. **Proof** (*Schlusskorrektur*) — the last typos, in the exported format.
+
+`book_revision_checklist pass=...` gives the questions of each pass in the
+book's language, with the tools that answer them. `book_revision_mark` records
+a pass per chapter (or `["all"]`), and `book_revision_status` shows the matrix,
+how far each pass has got and which comes next — and points out a chapter
+copy-edited before its structural pass. The chapter status (`draft`, `review`,
+`final`) is unchanged by any of this.
+
+### The style sheet
+
+Where more than one spelling is correct, the copy editor keeps a list of the
+one this book uses. `book_stylesheet_add preferred="E-Mail" variants=["Email",
+"eMail"]` adds an entry; `book_stylesheet_check` finds every variant still in
+the book — whole words, case-sensitive unless asked otherwise — with its
+chapter, paragraph and the `book_replace_text` call that fixes it. It also
+reports quotation marks: more than one convention in the same book („…“ and
+»…«), typewriter quotes where the language sets typographic ones, and
+typewriter apostrophes.
+
+### Prose analysis
+
+`book_prose_check` reads a chapter (or a passage) the way a line editor does,
+and reports what it finds as hints, not errors — each is sometimes exactly
+right: filler words per thousand (*eigentlich*, *irgendwie*; *just*, *really*),
+a word echoed within thirty words (the cast's names excepted), sentence length
+— average, spread, a monotonous run, the longest ones — paragraphs over 180
+words, the share of dialogue, and in English adverbs in *-ly*. Markup is not
+counted, and a language without rules is told so rather than analysed badly.
+
 ## Chapter Version History
 
 Every `book_chapter_update` that changes the prose files the previous text away
@@ -969,6 +1020,7 @@ your-book/
     notes.json          # Notes from test readers and the editor
     scenes.json         # What is noted about each scene
     concept.json        # Premise, logline, readership, comparable titles
+    stylesheet.json     # The copy-edit style sheet
     style-guide.json    # Voice, tone, POV, influences
     outline.json        # Hierarchical outline with acts and scenes
     cover-spec.json     # Cover design specification

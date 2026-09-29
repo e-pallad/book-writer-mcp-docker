@@ -62,6 +62,15 @@ export interface LanguageRules {
    * true for German, where "Alter" (age) is not the adjective "alt".
    */
   adjectivesLowercase?: boolean;
+
+  /** Words that pad a sentence more often than they carry it ("eigentlich", "just"). */
+  fillerWords: string[];
+  /** Function words, left out when looking for a word repeated too soon. */
+  stopWords: string[];
+  /** A sentence this long (in words) is worth a second look. */
+  longSentence: number;
+  /** Adverbs by their ending, where the language marks them that way ("-ly"). */
+  adverbSuffix?: string;
 }
 
 export type MatterLabelKey =

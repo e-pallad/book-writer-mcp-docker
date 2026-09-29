@@ -55,4 +55,27 @@ export const en: LanguageRules = {
     brunette: ["blonde", "fair-haired", "redhead"],
   },
   adjectiveEndings: [],
+
+  fillerWords: [
+    "just", "really", "very", "quite", "actually", "basically", "somehow",
+    "suddenly", "rather", "pretty", "simply", "literally", "totally",
+    "seemingly", "almost", "nearly", "slightly", "somewhat", "perhaps",
+    "maybe", "started to", "began to", "a bit", "a little", "kind of", "sort of",
+  ],
+  stopWords: [
+    "the", "a", "an", "and", "or", "but", "not", "no", "nor", "i", "you", "he",
+    "she", "it", "we", "they", "me", "him", "her", "us", "them", "my", "your",
+    "his", "its", "our", "their", "this", "that", "these", "those", "is", "was",
+    "are", "were", "be", "been", "being", "have", "has", "had", "do", "does",
+    "did", "will", "would", "can", "could", "should", "shall", "may", "might",
+    "must", "to", "of", "in", "on", "at", "by", "for", "with", "from", "as",
+    "into", "about", "than", "then", "there", "here", "what", "which", "who",
+    "whom", "whose", "when", "where", "why", "how", "all", "any", "some",
+    "more", "most", "so", "too", "very", "just", "also", "only", "said", "says",
+    "out", "up", "down", "over", "back", "again", "one", "if", "like",
+    "yes", "yet", "off", "now", "get", "got", "let", "say", "see", "two", "own",
+    "way", "did", "any", "how", "who", "why", "her", "him", "our", "its",
+  ],
+  longSentence: 35,
+  adverbSuffix: "ly",
 };

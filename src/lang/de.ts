@@ -148,4 +148,34 @@ export const de: LanguageRules = {
   // Adjectives are lowercase in German, nouns are not: matching case-
   // sensitively keeps "alt" from finding the noun "Alter".
   adjectivesLowercase: true,
+
+  fillerWords: [
+    "eigentlich", "irgendwie", "halt", "eben", "mal", "wohl", "gerade",
+    "einfach", "wirklich", "ziemlich", "total", "echt", "quasi", "sozusagen",
+    "gewissermaßen", "durchaus", "natürlich", "bereits", "nämlich", "etwa",
+    "ohnehin", "sowieso", "überhaupt", "plötzlich", "sehr", "ganz", "etwas",
+    "bisschen", "irgendwann", "irgendwo", "eher", "relativ", "offenbar",
+    "offensichtlich", "scheinbar", "allerdings", "jedenfalls", "fast",
+    "beinahe", "fing an", "begann zu",
+  ],
+  stopWords: [
+    "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "eines",
+    "einem", "einen", "und", "oder", "aber", "doch", "nicht", "kein", "keine",
+    "keinen", "ich", "du", "er", "sie", "es", "wir", "ihr", "mich", "mir",
+    "dich", "dir", "sich", "ihn", "ihm", "ihnen", "uns", "euch", "sein",
+    "seine", "seinen", "seinem", "seiner", "ihre", "ihren", "ihrem", "ihrer",
+    "mein", "meine", "dein", "deine", "unser", "euer", "dass", "als", "wie",
+    "wenn", "weil", "ob", "zu", "zum", "zur", "im", "in", "an", "am", "auf",
+    "aus", "bei", "mit", "nach", "von", "vor", "über", "unter", "um", "durch",
+    "für", "gegen", "ohne", "bis", "seit", "ist", "war", "sind", "waren",
+    "hat", "hatte", "haben", "hatten", "wird", "wurde", "werden", "wurden",
+    "kann", "konnte", "muss", "musste", "soll", "sollte", "will", "wollte",
+    "noch", "nur", "auch", "schon", "so", "da", "dann", "dort", "hier",
+    "jetzt", "nun", "was", "wer", "wo", "man", "alle", "alles", "etwas",
+    "nichts", "mehr", "sehr", "denn", "ja", "nein", "sagte", "sagt", "einmal",
+    "wieder", "immer", "diese", "dieser", "dieses", "diesen", "diesem", "jede",
+    "jeder", "jedes", "welche", "welcher", "zwei", "drei", "hin", "her",
+    "gar", "los", "mal", "ihm", "ihn", "wie", "wer", "des", "vom", "ins", "ans",
+  ],
+  longSentence: 40,
 };

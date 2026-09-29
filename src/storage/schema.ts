@@ -72,7 +72,15 @@ export interface ChapterMeta {
    * so the chapters after it are numbered from where they would be.
    */
   numbered?: boolean;
+  /** Revision passes done on this chapter, in the order they were marked. */
+  passes?: { pass: RevisionPass; at: string; note?: string }[];
 }
+
+/**
+ * The classic passes of a revision, from the large to the small: structure,
+ * then scene and line, then copy, then the final proof.
+ */
+export type RevisionPass = "structural" | "line" | "copy" | "proof";
 
 export interface StoryBible {
   characters: Character[];
@@ -495,4 +503,20 @@ export interface Concept {
   /** Non-fiction: what the reader will know or be able to do afterwards. */
   readerPromise?: string;
   updatedAt: string;
+}
+
+/**
+ * The copy-editor's style sheet: which spelling the book uses where more than
+ * one is correct ("E-Mail", not "Email"), so the whole manuscript agrees.
+ */
+export interface Stylesheet {
+  entries: StylesheetEntry[];
+}
+
+export interface StylesheetEntry {
+  preferred: string;
+  variants: string[];
+  note?: string;
+  /** Default true: "email" and "Email" are different variants. */
+  caseSensitive?: boolean;
 }

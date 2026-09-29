@@ -16,6 +16,7 @@ import {
   Notes,
   Scenes,
   Concept,
+  Stylesheet,
 } from "./schema";
 import { BookMCPError } from "../utils/errors";
 import { toNFC } from "../utils/text";
@@ -367,6 +368,23 @@ export function updateConcept(
   });
 }
 
+// Copy-editing style sheet
+export function getStylesheet(): Stylesheet | null {
+  return readJSON<Stylesheet>(mcpPath("stylesheet.json"));
+}
+
+/** Amends the style sheet, creating it on first use. */
+export function updateStylesheet(
+  mutate: (sheet: Stylesheet) => unknown | Promise<unknown>
+): Promise<Stylesheet> {
+  return withFileLock(mcpPath("stylesheet.json"), async () => {
+    const sheet = getStylesheet() ?? { entries: [] };
+    const outcome = await mutate(sheet);
+    if (outcome !== ABORT) writeJSON(mcpPath("stylesheet.json"), sheet);
+    return sheet;
+  });
+}
+
 // AI content disclosure
 export function getAiDisclosure(): AiDisclosure | null {
   return readJSON<AiDisclosure>(mcpPath("ai-disclosure.json"));
@@ -621,5 +639,6 @@ export function getProjectPaths() {
     notesPath: mcpPath("notes.json"),
     scenesPath: mcpPath("scenes.json"),
     conceptPath: mcpPath("concept.json"),
+    stylesheetPath: mcpPath("stylesheet.json"),
   };
 }
