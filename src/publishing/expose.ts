@@ -60,6 +60,8 @@ interface Words {
   roles: Record<Character["role"], string>;
   chapter: string;
   chapterSynopsis: string;
+  wants: string;
+  needs: string;
 }
 
 const DE: Words = {
@@ -93,6 +95,8 @@ const DE: Words = {
   roles: { protagonist: "Hauptfigur", antagonist: "Gegenspieler·in", supporting: "Nebenfigur", minor: "Randfigur" },
   chapter: "Kapitel",
   chapterSynopsis: "Zusammenfassung",
+  wants: "will",
+  needs: "braucht",
 };
 
 const EN: Words = {
@@ -126,6 +130,8 @@ const EN: Words = {
   roles: { protagonist: "Protagonist", antagonist: "Antagonist", supporting: "Supporting", minor: "Minor" },
   chapter: "Chapter",
   chapterSynopsis: "Synopsis",
+  wants: "wants",
+  needs: "needs",
 };
 
 function wordsFor(language: string): Words {
@@ -240,7 +246,12 @@ export function buildExpose(input: ExposeInput): Expose {
       `## ${w.cast}`,
       cast.length
         ? cast
-            .map((c) => `- **${c.name}** (${w.roles[c.role]}) — ${firstSentences(c.description)}`)
+            .map((c) => {
+              const arc = [c.arc?.want && `${w.wants}: ${c.arc.want}`, c.arc?.need && `${w.needs}: ${c.arc.need}`]
+                .filter(Boolean)
+                .join("; ");
+              return `- **${c.name}** (${w.roles[c.role]}) — ${firstSentences(c.description)}${arc ? ` *${arc}.*` : ""}`;
+            })
             .join("\n")
         : w.missing(w.cast, "book_character_add")
     );

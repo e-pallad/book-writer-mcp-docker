@@ -18,6 +18,7 @@
     "src/notes/**/*",
     "src/scenes/**/*",
     "src/outline/**/*",
+    "src/structure/**/*",
     "src/tools/style-rules.ts",
     "src/tools/continuity-rules.ts",
     "src/tools/voice.ts",

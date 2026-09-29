@@ -250,6 +250,15 @@ The hostname stays stable across restarts and rebuilds, so you only configure th
 | `book_outline_link` | Link entries to the chapters written from them, where the title is unambiguous |
 | `book_outline_compare` | Plan against manuscript: not yet written, not planned, moved, retitled |
 
+### Structure
+
+| Tool | What it does |
+|------|-------------|
+| `book_structure_templates` | Three-act, hero's journey, Save the Cat, Freytag, seven-point — with their beats and positions |
+| `book_structure_set` | Choose the structure the book follows |
+| `book_beat_set` | Place a turning point in a chapter (or scene) |
+| `book_structure_check` | Where each beat actually falls, measured in words; and the characters' arcs |
+
 ### Style Guide
 
 | Tool | What it does |
@@ -465,6 +474,37 @@ days, and falls back to reconstructing from saved versions before that.
 Word counts count prose, not markup: a heading's `#`, a scene break, a quote's
 `>` and a free-standing dash are not words. A project counted by the older
 counter is recounted the next time its registry is written.
+
+## Structure and Character Arcs
+
+Classic plotting leans on a handful of structures and on their turning points
+falling at roughly known places — the midpoint near the middle, the first
+plot point near a quarter. `book_structure_templates` lists five, with where
+each beat conventionally falls: the three-act structure, the hero's journey
+(Vogler), Save the Cat, Freytag's pyramid and the seven-point structure.
+
+```
+book_structure_set template="three_act"
+book_beat_set beat="midpoint" chapterId="Das Boot" scene=2 note="Mara erfährt, wer der Tote ist."
+book_structure_check
+```
+
+`book_structure_check` measures where each placed beat actually falls, **by
+words** — the middle of its chapter, or of its scene — and reports beats more
+than 7% from their place (the tolerance is adjustable), beats placed out of the
+template's order, and beats not placed yet. An unfinished book is measured
+against its target length, since the draft's end is not the book's end. The
+positions are conventions, not rules: the report says *early* or *late*, and
+the dashboard lists it under *structure*. Switching structure keeps the beats
+the two share.
+
+A character's **arc** sits in their profile: what they `want`, what they
+`need`, the `wound` behind the `lie` they believe, whether the arc is
+`positive`, `negative` or `flat`, and `milestones` — the chapters where it
+moves. Updating an arc merges into it, so milestones can be added as the draft
+grows. The structure check reminds you of a protagonist without an arc, or a
+changing arc without its core, and the exposé's cast list says what each
+character wants and needs.
 
 ## The Outline and the Manuscript
 

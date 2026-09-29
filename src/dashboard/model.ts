@@ -77,7 +77,7 @@ export interface Velocity {
 
 export interface HealthFinding {
   severity: "good" | "warning" | "serious" | "critical";
-  area: "plot" | "timeline" | "voice" | "style" | "pace" | "feedback" | "draft";
+  area: "plot" | "timeline" | "voice" | "style" | "pace" | "feedback" | "draft" | "structure";
   summary: string;
   detail: string;
 }

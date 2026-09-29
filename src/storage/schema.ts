@@ -115,6 +115,23 @@ export interface Character {
    * Optional: most characters do not need one.
    */
   voiceProfile?: VoiceProfile;
+  /** How the character changes across the book. Optional. */
+  arc?: CharacterArc;
+}
+
+/**
+ * A character's arc, in the terms most craft books use: what they want, what
+ * they actually need, the wound behind the lie they believe, and whether they
+ * change for the better, for the worse, or stay true while changing others.
+ */
+export interface CharacterArc {
+  want?: string;
+  need?: string;
+  wound?: string;
+  lie?: string;
+  arcType?: "positive" | "negative" | "flat";
+  /** Where the arc moves: a chapter and what shifts there. */
+  milestones?: { chapterId: string; note: string }[];
 }
 
 export interface VoiceProfile {
@@ -268,6 +285,20 @@ export interface SpineSpec {
 
 export interface Outline {
   acts: OutlineAct[];
+  /** The story structure the book follows, and where its turning points fall. */
+  structure?: {
+    template: string;
+    beats: BeatPlacement[];
+  };
+}
+
+export interface BeatPlacement {
+  /** A beat id from the template ("midpoint"). */
+  beat: string;
+  chapterId: string;
+  /** The scene within the chapter, when the beat is that precise. */
+  scene?: number;
+  note?: string;
 }
 
 export interface OutlineAct {

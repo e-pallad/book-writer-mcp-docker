@@ -9,6 +9,7 @@ import {
   getWritingLog,
   getMetadata,
   getNotes,
+  getOutline,
   readChapterFile,
 } from "../storage/filestore";
 import { missingMetadata } from "../publishing/metadata";
@@ -23,6 +24,7 @@ import { wholeWordRegExp } from "../utils/text";
 import { BookMCPError } from "../utils/errors";
 import { lastCarried } from "../tools/continuity-rules";
 import { listScenes } from "../scenes/list";
+import { checkStructure } from "../structure/check";
 import {
   ChapterRow,
   DashboardData,
@@ -417,6 +419,27 @@ function buildHealth(
       detail: stale
         .map((c) => `${c.title} (${daysBetween(c.updatedAt, now)}d)`)
         .join(", "),
+    });
+  }
+
+  // Turning points far from where the chosen structure expects them.
+  const structure = checkStructure(
+    getOutline(),
+    registry,
+    (c) => texts.get(c.id) ?? "",
+    registry.language ?? "en"
+  );
+  for (const beat of structure?.beats ?? []) {
+    if (beat.verdict !== "early" && beat.verdict !== "late") continue;
+    findings.push({
+      severity: Math.abs(beat.deviation ?? 0) > 0.15 ? "serious" : "warning",
+      area: "structure",
+      summary: `${beat.name} at ${Math.round((beat.actual ?? 0) * 100)}%, expected ~${Math.round(beat.expected * 100)}%`,
+      detail: `Placed in ${beat.chapterId}. ${
+        structure!.basis === "target"
+          ? "Measured against the target length, as the draft is not finished."
+          : "Measured against the manuscript as it stands."
+      }`,
     });
   }
 

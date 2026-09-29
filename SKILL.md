@@ -16,6 +16,14 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 4. `book_outline_set` — structure before drafting
 5. Add key characters via `book_character_add` before Chapter 1
 
+## Workflow for Structure
+1. `book_structure_templates` — offer the structures; `book_structure_set`
+2. `book_beat_set` as turning points are drafted (with `scene` when precise)
+3. `book_structure_check` — present early/late beats as questions, not errors:
+   the positions are conventions
+- Give protagonists an `arc` (want, need, wound, lie, arcType) and add
+  `milestones` as chapters move it
+
 ## Workflow for Plan against Manuscript
 - Create chapters from outline entries with the same title, or pass
   `outlineTitle` when the chapter's title differs — they are then linked

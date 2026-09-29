@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getStoryBible, updateStoryBible } from "../storage/filestore";
-import { Character, Setting, PlotThread, Theme } from "../storage/schema";
+import { Character, CharacterArc, Setting, PlotThread, Theme } from "../storage/schema";
 import {
   chapterRef,
   normaliseThemes,
@@ -70,6 +70,24 @@ const voiceProfileSchema = z
     "Optional per-character voice profile. book_style_check uses it to judge this character's dialogue against the global style guide."
   );
 
+// How a character changes across the book. Shared by add and update.
+const arcSchema = z
+  .object({
+    want: z.string().optional().describe("What they want — the goal they chase"),
+    need: z.string().optional().describe("What they actually need, often without knowing it"),
+    wound: z.string().optional().describe("The hurt in their past behind the lie"),
+    lie: z.string().optional().describe("The false belief they hold about themselves or the world"),
+    arcType: z
+      .enum(["positive", "negative", "flat"])
+      .optional()
+      .describe("positive (they change for the better), negative (for the worse), flat (they stay true and change others)"),
+    milestones: z
+      .array(z.object({ chapterId: z.string(), note: z.string() }))
+      .optional()
+      .describe("Chapters where the arc moves, and what shifts there"),
+  })
+  .describe("The character's arc. Optional.");
+
 function jsonResult(payload: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
@@ -79,6 +97,23 @@ function jsonResult(payload: unknown) {
 function withWarnings<T extends Record<string, unknown>>(payload: T, warnings: (string | undefined)[]) {
   const present = warnings.filter((w): w is string => Boolean(w));
   return present.length ? { ...payload, warnings: present } : payload;
+}
+
+/** An arc as stored: milestone chapters as ids, and warnings for ones not written yet. */
+function normaliseArc(arc: z.infer<typeof arcSchema>): { arc: CharacterArc; warnings: string[] } {
+  const warnings: string[] = [];
+  const milestones = arc.milestones?.map((m) => {
+    const ref = chapterRef(m.chapterId);
+    if (ref.warning) warnings.push(ref.warning);
+    return { chapterId: ref.id, note: m.note };
+  });
+  const cleaned: CharacterArc = {};
+  for (const field of ["want", "need", "wound", "lie"] as const) {
+    if (arc[field]?.trim()) cleaned[field] = arc[field]!.trim();
+  }
+  if (arc.arcType) cleaned.arcType = arc.arcType;
+  if (milestones) cleaned.milestones = milestones;
+  return { arc: cleaned, warnings };
 }
 
 function requireBible() {
@@ -112,9 +147,11 @@ export function registerStoryBibleTools(server: McpServer): void {
         .describe("Chapter of first appearance (id or title)"),
       notes: z.string().optional().default("").describe("Additional notes"),
       voiceProfile: voiceProfileSchema.optional(),
+      arc: arcSchema.optional(),
     },
     async (input) => {
       const first = chapterRef(input.firstAppearance);
+      const arc = input.arc ? normaliseArc(input.arc) : undefined;
       const character: Character = {
         id: "",
         name: input.name,
@@ -127,6 +164,7 @@ export function registerStoryBibleTools(server: McpServer): void {
         firstAppearance: first.id,
         notes: input.notes,
         ...(input.voiceProfile ? { voiceProfile: input.voiceProfile } : {}),
+        ...(arc ? { arc: arc.arc } : {}),
       };
       // The read, the id, the push and the write all happen with
       // story-bible.json held, so two characters added at once can neither
@@ -137,7 +175,10 @@ export function registerStoryBibleTools(server: McpServer): void {
       });
 
       return jsonResult(
-        withWarnings({ message: `Character "${character.name}" added.`, character }, [first.warning])
+        withWarnings({ message: `Character "${character.name}" added.`, character }, [
+          first.warning,
+          ...(arc?.warnings ?? []),
+        ])
       );
     }
   );
@@ -162,22 +203,28 @@ export function registerStoryBibleTools(server: McpServer): void {
           firstAppearance: z.string().optional(),
           notes: z.string().optional(),
           voiceProfile: voiceProfileSchema.optional(),
+          arc: arcSchema.optional(),
         })
         .describe("Fields to update"),
     },
     async ({ characterId, updates }) => {
       let character!: Character;
       const first = updates.firstAppearance !== undefined ? chapterRef(updates.firstAppearance) : null;
+      const arc = updates.arc ? normaliseArc(updates.arc) : null;
       await updateStoryBible((bible) => {
         const found = resolveCharacter(bible, characterId);
-        Object.assign(found, updates);
+        const { arc: _arc, ...rest } = updates;
+        Object.assign(found, rest);
         if (first) found.firstAppearance = first.id;
+        // An arc is merged, so its milestones can be added without restating it.
+        if (arc) found.arc = { ...(found.arc ?? {}), ...arc.arc };
         character = found;
       });
 
       return jsonResult(
         withWarnings({ message: `Character "${character.name}" updated.`, character }, [
           first?.warning,
+          ...(arc?.warnings ?? []),
           updates.name !== undefined
             ? "Only the story bible was changed. book_character_rename also renames the character in the chapters."
             : undefined,
