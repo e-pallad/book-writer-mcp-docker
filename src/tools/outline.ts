@@ -9,8 +9,9 @@ import {
 import { resolveChapter, requireProject } from "../storage/chapters";
 import { Outline } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
-import { normalizeForCompare } from "../utils/text";
-import { autoLink, chapterFor, compareOutline, entries } from "../outline/link";
+import { autoLink, chapterFor, compareOutline, entries, entryByTitle } from "../outline/link";
+import { briefSchema, writeReply } from "./brief";
+import { actSchema, limitSchema, outlineEntryNumber, paginate, resolveAct, wantsPage } from "./paging";
 
 function jsonResult(payload: unknown) {
   return {
@@ -41,8 +42,9 @@ export function registerOutlineTools(server: McpServer): void {
           })
         )
         .describe("Hierarchical outline with acts and chapters"),
+      brief: briefSchema,
     },
-    async ({ outline }) => {
+    async ({ outline, brief }) => {
       const registry = getRegistry();
       const acts: Outline["acts"] = outline.map((act) => ({
         ...(act.act !== undefined ? { act: act.act } : {}),
@@ -65,7 +67,7 @@ export function registerOutlineTools(server: McpServer): void {
       const report = registry ? autoLink(next, registry) : null;
       await writeOutline(next);
 
-      return jsonResult({
+      return writeReply(brief, {
         message: "Outline saved.",
         actCount: acts.length,
         chapterCount: acts.reduce((sum, act) => sum + act.chapters.length, 0),
@@ -75,33 +77,83 @@ export function registerOutlineTools(server: McpServer): void {
               ...(report.ambiguous.length ? { ambiguous: report.ambiguous } : {}),
             }
           : {}),
-      });
+      }, { id: "outline", status: "updated" });
     }
   );
 
   server.tool(
     "book_outline_get",
-    "Retrieve the full outline, with each entry's manuscript chapter and its status where one has been written",
-    {},
-    async () => {
+    "Retrieve the outline, with each entry's manuscript chapter and its status where one has been written. Acts and chapters are numbered. For a long plan, page through it: act for one act, fromChapter to start further in, limit for how many — the reply's page.nextFromChapter continues where it stopped.",
+    {
+      act: actSchema,
+      fromChapter: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe(
+          "Start at this outline chapter: its number (as this tool numbers them, counting on across acts), its title, or the manuscript chapter it stands for (default: the first)"
+        ),
+      limit: limitSchema,
+    },
+    async ({ act, fromChapter, limit }) => {
       const outline = getOutline();
       if (!outline)
         throw new BookMCPError("No outline found. Run book_init first.");
       const registry = getRegistry();
 
+      // Numbered across the whole outline, so a number means the same entry
+      // on every page and in every act.
+      let position = 0;
+      const numbered = outline.acts.flatMap((a, index) =>
+        a.chapters.map((entry) => ({ number: ++position, item: { entry, act: index } }))
+      );
+      const actNumber = act !== undefined ? resolveAct(outline, act) : undefined;
+      const selection =
+        actNumber === undefined ? numbered : numbered.filter((n) => n.item.act === actNumber);
+      const from =
+        fromChapter === undefined ? undefined : outlineEntryNumber(outline, registry, fromChapter);
+      const { items, page } = paginate(selection, from, limit);
+      const paged = wantsPage({ act, fromChapter, limit });
+
+      const acts = outline.acts.flatMap((a, index) => {
+        const shown = items.filter((n) => n.item.act === index);
+        // A page leaves out the acts it has nothing from; the whole outline
+        // shows every act, even one still without chapters.
+        if (!shown.length && paged) return [];
+        return [
+          {
+            number: index + 1,
+            ...(a.act !== undefined ? { act: a.act } : {}),
+            chapters: shown.map(({ number, item: { entry } }) => {
+              const chapter = registry ? chapterFor(entry, registry) : undefined;
+              return {
+                number,
+                ...entry,
+                ...(chapter
+                  ? { written: { chapterId: chapter.id, status: chapter.status, wordCount: chapter.wordCount } }
+                  : { written: null }),
+              };
+            }),
+          },
+        ];
+      });
+
       return jsonResult({
-        acts: outline.acts.map((act) => ({
-          ...(act.act !== undefined ? { act: act.act } : {}),
-          chapters: act.chapters.map((entry) => {
-            const chapter = registry ? chapterFor(entry, registry) : undefined;
-            return {
-              ...entry,
-              ...(chapter
-                ? { written: { chapterId: chapter.id, status: chapter.status, wordCount: chapter.wordCount } }
-                : { written: null }),
-            };
-          }),
-        })),
+        acts,
+        ...(paged
+          ? {
+              page: {
+                ...page,
+                ...(actNumber !== undefined
+                  ? {
+                      act: {
+                        number: actNumber + 1,
+                        ...(outline.acts[actNumber].act ? { name: outline.acts[actNumber].act } : {}),
+                      },
+                    }
+                  : {}),
+              },
+            }
+          : {}),
       });
     }
   );
@@ -124,8 +176,9 @@ export function registerOutlineTools(server: McpServer): void {
         .string()
         .optional()
         .describe('Link the entry to this manuscript chapter (id or title); "" removes the link'),
+      brief: briefSchema,
     },
-    async ({ chapterTitle, chapterId, synopsis, scenes, linkTo }) => {
+    async ({ chapterTitle, chapterId, synopsis, scenes, linkTo, brief }) => {
       if (chapterTitle === undefined && chapterId === undefined) {
         throw new BookMCPError("Name the entry: pass chapterTitle, or chapterId for a linked entry.");
       }
@@ -135,11 +188,10 @@ export function registerOutlineTools(server: McpServer): void {
 
       let title = chapterTitle ?? "";
       await updateOutline((outline) => {
-        const found = entries(outline).find(({ entry }) =>
-          byChapter
-            ? registry && chapterFor(entry, registry)?.id === byChapter.id
-            : normalizeForCompare(entry.title) === normalizeForCompare(chapterTitle!)
-        );
+        const all = entries(outline);
+        const found = byChapter
+          ? all.find(({ entry }) => registry && chapterFor(entry, registry)?.id === byChapter.id)
+          : entryByTitle(all, chapterTitle!);
         if (!found) {
           throw new BookMCPError(
             byChapter
@@ -164,32 +216,40 @@ export function registerOutlineTools(server: McpServer): void {
         }
       });
 
-      return jsonResult({ message: `Outline chapter "${title}" updated.` });
+      return writeReply(
+        brief,
+        { message: `Outline chapter "${title}" updated.` },
+        { id: title, status: "updated" }
+      );
     }
   );
 
   server.tool(
     "book_outline_link",
     "Link outline entries to the manuscript chapters written from them, where the title makes it unambiguous — so a rename no longer depends on the two titles staying the same. Reports what it could not link.",
-    {},
-    async () => {
+    { brief: briefSchema },
+    async ({ brief }) => {
       const registry = requireProject();
       let report!: ReturnType<typeof autoLink>;
       await updateOutline((outline) => {
         report = autoLink(outline, registry);
         if (!report.linked.length) return false;
       });
-      return jsonResult({
-        message: report.linked.length
-          ? `Linked ${report.linked.length} outline entr${report.linked.length === 1 ? "y" : "ies"}.`
-          : "Nothing new to link.",
-        ...report,
-        ...(report.ambiguous.length
-          ? {
-              hint: "Link these by hand with book_outline_update_chapter chapterTitle=... linkTo=<chapter id>.",
-            }
-          : {}),
-      });
+      return writeReply(
+        brief,
+        {
+          message: report.linked.length
+            ? `Linked ${report.linked.length} outline entr${report.linked.length === 1 ? "y" : "ies"}.`
+            : "Nothing new to link.",
+          ...report,
+          ...(report.ambiguous.length
+            ? {
+                hint: "Link these by hand with book_outline_update_chapter chapterTitle=... linkTo=<chapter id>.",
+              }
+            : {}),
+        },
+        { id: "outline", status: report.linked.length ? "updated" : "unchanged" }
+      );
     }
   );
 

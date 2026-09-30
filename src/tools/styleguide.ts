@@ -16,6 +16,7 @@ import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare } from "../utils/text";
 import { languageNote, projectLanguage } from "../lang";
 import { checkStyle } from "./style-rules";
+import { briefSchema, writeReply } from "./brief";
 
 export function registerStyleGuideTools(server: McpServer): void {
   server.tool(
@@ -31,17 +32,11 @@ export function registerStyleGuideTools(server: McpServer): void {
       thingsToAvoid: z.array(z.string()).describe("Things to avoid in writing"),
       recurringMotifs: z.array(z.string()).describe("Recurring motifs"),
       samplePassage: z.string().describe("Sample passage for tone matching"),
+      brief: briefSchema,
     },
-    async (input) => {
-      await writeStyleGuide(input);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ message: "Style guide saved.", guide: input }, null, 2),
-          },
-        ],
-      };
+    async ({ brief, ...guide }) => {
+      await writeStyleGuide(guide);
+      return writeReply(brief, { message: "Style guide saved.", guide }, { id: "style", status: "updated" });
     }
   );
 
@@ -187,8 +182,9 @@ export function registerStyleGuideTools(server: McpServer): void {
           "Specific elements to draw from this author (e.g. ['sparse dialogue tags', 'long unpunctuated sentences', 'mythic imagery', 'unreliable narration', 'dry humor'])"
         ),
       notes: z.string().optional().default("").describe("Additional notes on how this influence should manifest"),
+      brief: briefSchema,
     },
-    async (input) => {
+    async ({ brief, ...input }) => {
       let totalInfluences = 0;
       await updateStyleGuide((guide) => {
         if (!guide.influences) guide.influences = [];
@@ -201,22 +197,15 @@ export function registerStyleGuideTools(server: McpServer): void {
         totalInfluences = guide.influences.length;
       });
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: `Author influence "${input.author}" added to style guide.`,
-                influence: input,
-                totalInfluences,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return writeReply(
+        brief,
+        {
+          message: `Author influence "${input.author}" added to style guide.`,
+          influence: input,
+          totalInfluences,
+        },
+        { id: input.author, status: "created" }
+      );
     }
   );
 
@@ -251,8 +240,9 @@ export function registerStyleGuideTools(server: McpServer): void {
     "Remove an author influence from the style guide",
     {
       author: z.string().describe("Author name to remove"),
+      brief: briefSchema,
     },
-    async ({ author }) => {
+    async ({ author, brief }) => {
       let removed = 0;
       let remaining = 0;
       await updateStyleGuide((guide) => {
@@ -265,24 +255,17 @@ export function registerStyleGuideTools(server: McpServer): void {
         remaining = guide.influences.length;
       });
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: removed > 0
-                  ? `Removed influence "${author}".`
-                  : `Author "${author}" not found in influences.`,
-                removed,
-                remaining,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return writeReply(
+        brief,
+        {
+          message: removed > 0
+            ? `Removed influence "${author}".`
+            : `Author "${author}" not found in influences.`,
+          removed,
+          remaining,
+        },
+        { id: author, status: removed > 0 ? "deleted" : "unchanged" }
+      );
     }
   );
 }

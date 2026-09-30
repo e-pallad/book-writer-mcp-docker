@@ -14,6 +14,7 @@ import { BookMCPError } from "../utils/errors";
 import { countWords } from "../utils/wordcount";
 import { labelsFor, projectLanguage } from "../lang";
 import { emptyReason, MATTER_KINDS, MATTER_TYPES, matterContent } from "../export/matter";
+import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -72,8 +73,9 @@ export function registerMatterTools(server: McpServer): void {
         .enum(["front", "back"])
         .optional()
         .describe("Move the section to the other end of the book — a cast list at the back, say"),
+      brief: briefSchema,
     },
-    async ({ type, content, title, position }) => {
+    async ({ type, content, title, position, brief }) => {
       const kind = MATTER_KINDS[type];
 
       let section!: MatterSection;
@@ -103,16 +105,24 @@ export function registerMatterTools(server: McpServer): void {
       });
 
       const described = describe(section);
-      return jsonResult({
-        message: `${replaced ? "Updated" : "Added"} the ${type.replace(/_/g, " ")}.`,
-        section: described,
-        ...(type === "dramatis_personae" && described.source === "generated"
-          ? {
-              caution:
-                "The cast list prints the first sentence of each character's story-bible description. Read it for spoilers before publishing, or give the section content of its own.",
-            }
-          : {}),
-      });
+      const caution =
+        type === "dramatis_personae" && described.source === "generated"
+          ? "The cast list prints the first sentence of each character's story-bible description. Read it for spoilers before publishing, or give the section content of its own."
+          : undefined;
+      return writeReply(
+        brief,
+        {
+          message: `${replaced ? "Updated" : "Added"} the ${type.replace(/_/g, " ")}.`,
+          section: described,
+          ...(caution ? { caution } : {}),
+        },
+        {
+          id: type,
+          status: replaced ? "updated" : "created",
+          ...("words" in described ? { wordCount: described.words } : {}),
+        },
+        caution ? [caution] : []
+      );
     }
   );
 
@@ -149,8 +159,8 @@ export function registerMatterTools(server: McpServer): void {
   server.tool(
     "book_matter_remove",
     "Remove a piece of front or back matter",
-    { type: TYPE_SCHEMA },
-    async ({ type }) => {
+    { type: TYPE_SCHEMA, brief: briefSchema },
+    async ({ type, brief }) => {
       let removed = false;
       await updateMatter((matter) => {
         const before = matter.sections.length;
@@ -159,7 +169,11 @@ export function registerMatterTools(server: McpServer): void {
         if (!removed) return false;
       });
       if (!removed) throw new BookMCPError(`The book has no ${type.replace(/_/g, " ")}.`);
-      return jsonResult({ message: `Removed the ${type.replace(/_/g, " ")}.` });
+      return writeReply(
+        brief,
+        { message: `Removed the ${type.replace(/_/g, " ")}.` },
+        { id: type, status: "deleted" }
+      );
     }
   );
 }

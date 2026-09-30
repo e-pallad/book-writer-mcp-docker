@@ -226,3 +226,8 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
   exclude
 - Offer book_chapter_revert instead of rewriting from memory when the author
   dislikes a revision; the earlier text is still on disk
+- Pass brief=true to write tools in a long session or a run of edits: the reply
+  is then only id, status and word count. Still read and pass on its warnings
+- In a long book, page with book_chapter_list / book_outline_get act=... or
+  fromChapter=... limit=... instead of loading every chapter; continue with the
+  page.nextFromChapter the reply gives

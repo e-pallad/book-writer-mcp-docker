@@ -20,6 +20,7 @@ import {
   readerFacingNote,
   requiresDisclosure,
 } from "./ai-disclosure-policy";
+import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -76,8 +77,9 @@ export function registerAiDisclosureTools(server: McpServer): void {
         .describe(
           "Name for the optional reader-facing note (defaults to the author profile, then the project author)."
         ),
+      brief: briefSchema,
     },
-    async ({ text, images, translations, notes, authorName }) => {
+    async ({ text, images, translations, notes, authorName, brief }) => {
       const uses: Record<"text" | "images" | "translations", AiUse> = {
         text,
         images,
@@ -105,12 +107,15 @@ export function registerAiDisclosureTools(server: McpServer): void {
       const generated = CONTENT_TYPES.filter((t) => uses[t] === "ai_generated");
       const assisted = CONTENT_TYPES.filter((t) => uses[t] === "ai_assisted");
 
-      return jsonResult({
-        message: required
-          ? `This book has AI-generated ${generated
-              .map((t) => t)
-              .join(" and ")}, which must be declared to KDP.`
-          : "Nothing here has to be declared to KDP.",
+      const message = required
+        ? `This book has AI-generated ${generated
+            .map((t) => t)
+            .join(" and ")}, which must be declared to KDP.`
+        : "Nothing here has to be declared to KDP.";
+      // What has to be declared is the point of the call, so a brief reply
+      // still says it.
+      return writeReply(brief, {
+        message,
         disclosureRequired: required,
         classification: CONTENT_TYPES.map((type) => ({
           contentType: type,
@@ -144,7 +149,7 @@ export function registerAiDisclosureTools(server: McpServer): void {
             "Amazon updates this policy without notice. Confirm the page above still matches before you publish, rather than relying on this date.",
         },
         recordedAt: disclosure.recordedAt,
-      });
+      }, { id: "aiDisclosure", status: "updated" }, required ? [message] : []);
     }
   );
 

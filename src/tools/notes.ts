@@ -6,6 +6,7 @@ import { Note } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare, splitParagraphs, toNFC } from "../utils/text";
 import { locateNote } from "../notes/anchor";
+import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -52,8 +53,9 @@ export function registerNoteTools(server: McpServer): void {
         .number()
         .optional()
         .describe("Pin the note to a paragraph instead (1-based, as book_chapter_find reports them)"),
+      brief: briefSchema,
     },
-    async ({ chapterId, text, source, kind, anchorText, paragraph }) => {
+    async ({ chapterId, text, source, kind, anchorText, paragraph, brief }) => {
       if (!text.trim()) throw new BookMCPError("A note needs text.");
       const registry = requireProject();
       const chapter = resolveChapter(registry, chapterId);
@@ -98,11 +100,15 @@ export function registerNoteTools(server: McpServer): void {
         notes.notes.push(note);
       });
 
-      return jsonResult({
-        message: `Note added to ${chapter.id} ("${chapter.title}").`,
-        note,
-        location: locateNote(note, content),
-      });
+      return writeReply(
+        brief,
+        {
+          message: `Note added to ${chapter.id} ("${chapter.title}").`,
+          note,
+          location: locateNote(note, content),
+        },
+        { id: note.id, status: note.status }
+      );
     }
   );
 
@@ -181,8 +187,9 @@ export function registerNoteTools(server: McpServer): void {
       noteId: z.string().describe("The note's id"),
       resolution: z.string().optional().describe("How it was dealt with: 'rewritten', 'kept on purpose, because …'"),
       reopen: z.boolean().optional().default(false).describe("Open a resolved note again"),
+      brief: briefSchema,
     },
-    async ({ noteId, resolution, reopen }) => {
+    async ({ noteId, resolution, reopen, brief }) => {
       let note!: Note;
       await updateNotes((notes) => {
         const found = notes.notes.find((n) => n.id === noteId);
@@ -197,18 +204,22 @@ export function registerNoteTools(server: McpServer): void {
         }
         note = found;
       });
-      return jsonResult({
-        message: reopen ? `Note ${noteId} reopened.` : `Note ${noteId} resolved.`,
-        note,
-      });
+      return writeReply(
+        brief,
+        {
+          message: reopen ? `Note ${noteId} reopened.` : `Note ${noteId} resolved.`,
+          note,
+        },
+        { id: note.id, status: note.status }
+      );
     }
   );
 
   server.tool(
     "book_note_delete",
     "Delete a note outright — for one recorded by mistake. A note that was dealt with is better resolved, which keeps the record.",
-    { noteId: z.string().describe("The note's id") },
-    async ({ noteId }) => {
+    { noteId: z.string().describe("The note's id"), brief: briefSchema },
+    async ({ noteId, brief }) => {
       let removed = false;
       await updateNotes((notes) => {
         const before = notes.notes.length;
@@ -217,7 +228,7 @@ export function registerNoteTools(server: McpServer): void {
         if (!removed) return false;
       });
       if (!removed) throw new BookMCPError(`Note "${noteId}" not found.`);
-      return jsonResult({ message: `Note ${noteId} deleted.` });
+      return writeReply(brief, { message: `Note ${noteId} deleted.` }, { id: noteId, status: "deleted" });
     }
   );
 }

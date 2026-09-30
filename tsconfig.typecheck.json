@@ -25,6 +25,8 @@
     "src/tools/continuity-rules.ts",
     "src/tools/voice.ts",
     "src/tools/timeline-continuity.ts",
-    "src/tools/ai-disclosure-policy.ts"
+    "src/tools/ai-disclosure-policy.ts",
+    "src/tools/brief.ts",
+    "src/tools/paging.ts"
   ]
 }

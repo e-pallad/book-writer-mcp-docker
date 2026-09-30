@@ -6,6 +6,7 @@ import { chapterRef } from "../storage/bible";
 import { ResearchEntry } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare } from "../utils/text";
+import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -70,8 +71,9 @@ export function registerResearchTools(server: McpServer): void {
       tags: z.array(z.string()).optional().default([]),
       chapters: z.array(z.string()).optional().describe("Chapter ids or titles it is used in"),
       bibliography: z.boolean().optional().default(false).describe("List it in the bibliography"),
+      brief: briefSchema,
     },
-    async ({ title, content, source, url, tags, chapters, bibliography }) => {
+    async ({ title, content, source, url, tags, chapters, bibliography, brief }) => {
       if (!title.trim()) throw new BookMCPError("A research entry needs a title.");
       requireProject();
       if (bibliography && !source?.trim()) {
@@ -95,11 +97,15 @@ export function registerResearchTools(server: McpServer): void {
         entry.id = newId(research.entries);
         research.entries.push(entry);
       });
-      return jsonResult({
-        message: `Research entry "${entry.title}" saved.`,
-        entry,
-        ...(warnings.length ? { warnings } : {}),
-      });
+      return writeReply(
+        brief,
+        {
+          message: `Research entry "${entry.title}" saved.`,
+          entry,
+          ...(warnings.length ? { warnings } : {}),
+        },
+        { id: entry.id, status: "created" }
+      );
     }
   );
 
@@ -163,8 +169,9 @@ export function registerResearchTools(server: McpServer): void {
       tags: z.array(z.string()).optional(),
       chapters: z.array(z.string()).optional().describe("Replaces the chapter list"),
       bibliography: z.boolean().optional(),
+      brief: briefSchema,
     },
-    async ({ id, chapters, ...fields }) => {
+    async ({ id, chapters, brief, ...fields }) => {
       const { ids, warnings } = chapters ? chapterIds(chapters) : { ids: undefined, warnings: [] };
       let entry!: ResearchEntry;
       await updateResearch((research) => {
@@ -190,15 +197,19 @@ export function registerResearchTools(server: McpServer): void {
         found.updatedAt = new Date().toISOString();
         entry = found;
       });
-      return jsonResult({ message: `Research entry "${entry.title}" updated.`, entry, ...(warnings.length ? { warnings } : {}) });
+      return writeReply(
+        brief,
+        { message: `Research entry "${entry.title}" updated.`, entry, ...(warnings.length ? { warnings } : {}) },
+        { id: entry.id, status: "updated" }
+      );
     }
   );
 
   server.tool(
     "book_research_delete",
     "Delete a research entry",
-    { id: z.string() },
-    async ({ id }) => {
+    { id: z.string(), brief: briefSchema },
+    async ({ id, brief }) => {
       let removed = false;
       await updateResearch((research) => {
         const before = research.entries.length;
@@ -207,7 +218,7 @@ export function registerResearchTools(server: McpServer): void {
         if (!removed) return false;
       });
       if (!removed) throw new BookMCPError(`Research entry "${id}" not found.`);
-      return jsonResult({ message: `Research entry ${id} deleted.` });
+      return writeReply(brief, { message: `Research entry ${id} deleted.` }, { id, status: "deleted" });
     }
   );
 }

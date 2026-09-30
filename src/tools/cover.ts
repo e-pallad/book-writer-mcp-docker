@@ -12,6 +12,7 @@ import { POLICY_SOURCE_URL } from "./ai-disclosure-policy";
 import { BookMCPError } from "../utils/errors";
 import { getMetadata, updateMetadata } from "../storage/filestore";
 import { missingMetadata } from "../publishing/metadata";
+import { briefSchema, writeReply } from "./brief";
 
 // Kindle Direct Publishing (KDP) cover specifications
 // Source: https://kdp.amazon.com/en_US/help/topic/G200645690
@@ -200,6 +201,7 @@ export function registerCoverTools(server: McpServer): void {
         .optional()
         .default([])
         .describe("Testimonial quotes for back cover"),
+      brief: briefSchema,
     },
     async (input) => {
       const registry = getRegistry();
@@ -276,26 +278,20 @@ export function registerCoverTools(server: McpServer): void {
       // Generate an AI image generation prompt
       const aiPrompt = generateCoverPrompt(spec, registry.genre);
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: "Cover specification created and saved.",
-                spec,
-                estimatedPageCount: pageCount,
-                spineWidthInches: Math.round(spineWidth * 1000) / 1000,
-                aiImagePrompt: aiPrompt,
-                designBrief: generateDesignBrief(spec),
-                ...(blurbNote ? { note: blurbNote } : {}),
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return writeReply(
+        input.brief,
+        {
+          message: "Cover specification created and saved.",
+          spec,
+          estimatedPageCount: pageCount,
+          spineWidthInches: Math.round(spineWidth * 1000) / 1000,
+          aiImagePrompt: aiPrompt,
+          designBrief: generateDesignBrief(spec),
+          ...(blurbNote ? { note: blurbNote } : {}),
+        },
+        { id: "cover", status: "updated" },
+        blurbNote ? [blurbNote] : []
+      );
     }
   );
 
