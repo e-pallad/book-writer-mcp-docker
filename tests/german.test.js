@@ -271,9 +271,11 @@ test("German weekdays and times of day are checked against the timeline", async 
   assert.deepEqual(sameDay.flags.filter((f) => f.type === "timeline"), [], JSON.stringify(sameDay.flags));
 
   // "am Morgen" is morning; "morgen" alone is tomorrow and says nothing.
+  // A deliberate rewrite to a much shorter text, so the cut is confirmed.
   await callJson(api, "book_chapter_update", {
     chapterId,
     content: "# Eins\n\nMara las den Brief am Morgen.\n",
+    confirmShrink: true,
   });
   const morning = await callJson(api, "book_continuity_check", { chapterId });
   assert.ok(morning.flags.some((f) => /morning/.test(f.description)), JSON.stringify(morning.flags));

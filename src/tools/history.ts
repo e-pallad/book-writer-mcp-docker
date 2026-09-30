@@ -30,7 +30,7 @@ export function registerHistoryTools(server: McpServer): void {
     {
       chapterId: z
         .string()
-        .describe('Chapter ID (e.g. "ch-001") or chapter title'),
+        .describe('Chapter ID (e.g. "ch-001"), chapter title, or "#N" for the Nth chapter in reading order'),
     },
     async ({ chapterId }) => {
       const registry = requireProject();
@@ -83,7 +83,7 @@ export function registerHistoryTools(server: McpServer): void {
     {
       chapterId: z
         .string()
-        .describe('Chapter ID (e.g. "ch-001") or chapter title'),
+        .describe('Chapter ID (e.g. "ch-001"), chapter title, or "#N" for the Nth chapter in reading order'),
       timestamp: z
         .string()
         .describe(
@@ -133,7 +133,7 @@ export function registerHistoryTools(server: McpServer): void {
     {
       chapterId: z
         .string()
-        .describe('Chapter ID (e.g. "ch-001") or chapter title'),
+        .describe('Chapter ID (e.g. "ch-001"), chapter title, or "#N" for the Nth chapter in reading order'),
       timestamp: z
         .string()
         .optional()

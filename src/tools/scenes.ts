@@ -92,7 +92,7 @@ export function registerSceneTools(server: McpServer): void {
     "book_scene_set",
     "Note what a scene is: its point-of-view character, setting, time, the POV character's goal, the conflict in the way, the outcome, a summary. Scenes are numbered by the scene breaks in the chapter (book_scene_list shows them). Given fields replace what was there; an empty string clears one.",
     {
-      chapterId: z.string().describe('Chapter ID (e.g. "ch-001") or chapter title'),
+      chapterId: z.string().describe('Chapter ID (e.g. "ch-001"), chapter title, or "#N" for the Nth chapter in reading order'),
       scene: z.number().describe("Scene number within the chapter, 1-based"),
       pov: z.string().optional().describe("Point-of-view character (id, name or alias)"),
       setting: z.string().optional().describe("Where it happens — a setting from the story bible or free text"),

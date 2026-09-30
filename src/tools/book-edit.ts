@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
+  getOutline,
   getResearch,
   getStoryBible,
   readChapterFile,
@@ -10,16 +11,18 @@ import {
   updateTimeline,
 } from "../storage/filestore";
 import { ChapterMeta, Registry } from "../storage/schema";
-import { requireProject } from "../storage/chapters";
+import { chaptersInOrder, requireProject } from "../storage/chapters";
 import { resolveCharacter } from "../storage/bible";
 import { snapshotIfChanged } from "../storage/history";
 import { saveChapterContent } from "../storage/writing-log";
 import { selectChapters } from "../export/select";
 import { BookMCPError } from "../utils/errors";
-import { escapeRegExp, normalizeForCompare, toNFC } from "../utils/text";
+import { escapeRegExp, normalizeForCompare, paragraphNumbersAt, toNFC } from "../utils/text";
 import { findText, MatchOptions, snippetAt, spliceMatches } from "../utils/match";
 import { findPlaceholders } from "../utils/placeholders";
 import { researchFor } from "./research";
+import { exclusionList, findSubstituteSpellings } from "../prose/substitute-spelling";
+import { baseLanguage, projectLanguage } from "../lang";
 
 function jsonResult(payload: unknown) {
   return {
@@ -76,6 +79,85 @@ function inflectedForms(text: string, name: string): Map<string, number> {
   return forms;
 }
 
+// ---------------------------------------------------------------------------
+// Umlauts spelled out
+
+const LINT_EXAMPLES = 3;
+
+type LintLocation = "chapters" | "titles" | "synopses" | "storyBible" | "outline" | "plotThreads";
+
+interface LintExample {
+  word: string;
+  suggestion: string;
+  chapterId?: string;
+  paragraph?: number;
+  where?: string;
+}
+
+/** Counts and a few examples per place, filled in as the book is scanned. */
+class LintReport {
+  private places: Record<
+    LintLocation,
+    { count: number; examples: LintExample[]; byChapter?: Record<string, number> }
+  > = {
+    chapters: { count: 0, examples: [], byChapter: {} },
+    titles: { count: 0, examples: [] },
+    synopses: { count: 0, examples: [] },
+    storyBible: { count: 0, examples: [] },
+    outline: { count: 0, examples: [] },
+    plotThreads: { count: 0, examples: [] },
+  };
+
+  constructor(private exclusions: string[]) {}
+
+  /** Scans one field; `where` names it in an example. */
+  field(location: LintLocation, text: string | undefined, where: string): void {
+    if (!text) return;
+    const hits = findSubstituteSpellings(text, this.exclusions);
+    const place = this.places[location];
+    place.count += hits.length;
+    for (const hit of hits.slice(0, LINT_EXAMPLES - place.examples.length)) {
+      place.examples.push({ where, word: hit.word, suggestion: hit.suggestion });
+    }
+  }
+
+  chapter(chapter: ChapterMeta, content: string): void {
+    const text = toNFC(content);
+    const hits = findSubstituteSpellings(text, this.exclusions);
+    if (!hits.length) return;
+    const place = this.places.chapters;
+    place.count += hits.length;
+    place.byChapter![chapter.id] = hits.length;
+    const shown = hits.slice(0, LINT_EXAMPLES - place.examples.length);
+    const paragraphs = paragraphNumbersAt(text, shown.map((h) => h.index));
+    shown.forEach((hit, i) =>
+      place.examples.push({
+        chapterId: chapter.id,
+        paragraph: paragraphs[i],
+        word: hit.word,
+        suggestion: hit.suggestion,
+      })
+    );
+  }
+
+  result() {
+    const total = Object.values(this.places).reduce((sum, p) => sum + p.count, 0);
+    const locations = Object.fromEntries(
+      Object.entries(this.places).map(([name, place]) => [
+        name,
+        place.count
+          ? {
+              count: place.count,
+              ...(place.byChapter ? { byChapter: place.byChapter } : {}),
+              examples: place.examples,
+            }
+          : { count: 0 },
+      ])
+    );
+    return { total, locations };
+  }
+}
+
 export function registerBookEditTools(server: McpServer): void {
   // book_todo_list
   server.tool(
@@ -113,6 +195,110 @@ export function registerBookEditTools(server: McpServer): void {
         byKind,
         chapters: results,
         ...(total === 0 ? { message: "No placeholders left." } : {}),
+      });
+    }
+  );
+
+  // book_text_lint
+  server.tool(
+    "book_text_lint",
+    "Look for umlauts and ß spelled out as ue, ae, oe or ss (\"ueber\" for \"über\", \"Strasse\" for \"Straße\") in the chapter text, chapter titles and synopses, the story bible, the outline and the plot threads. Read-only. Replies with a count per place and at most 3 examples each — never the text. A heuristic for German: words like Feuer, Michael, Poet, muss or aussehen are not reported, and exclude takes more.",
+    {
+      exclude: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'More words to leave alone, on top of the built-in list (Michael, Feuer, Poet, …) — names spelled with ue/ae/oe/ss on purpose, say. Matched inside a word, so "Mueller" also covers "Muellers".'
+        ),
+    },
+    async ({ exclude }) => {
+      const registry = requireProject();
+      const report = new LintReport(exclusionList(exclude ?? []));
+
+      for (const chapter of chaptersInOrder(registry)) {
+        report.chapter(chapter, readChapterFile(chapter.filename));
+        report.field("titles", chapter.title, `title of ${chapter.id}`);
+        report.field("synopses", chapter.synopsis, `synopsis of ${chapter.id}`);
+      }
+      report.field("titles", registry.title, "book title");
+
+      const bible = getStoryBible();
+      for (const c of bible?.characters ?? []) {
+        const at = (field: string) => `character "${c.name}": ${field}`;
+        report.field("storyBible", c.name, at("name"));
+        c.aliases.forEach((alias) => report.field("storyBible", alias, at("alias")));
+        report.field("storyBible", c.description, at("description"));
+        report.field("storyBible", c.backstory, at("backstory"));
+        c.traits.forEach((trait) => report.field("storyBible", trait, at("traits")));
+        report.field("storyBible", c.notes, at("notes"));
+        c.relationships.forEach((r) => report.field("storyBible", r.nature, at("relationships")));
+        const voice = c.voiceProfile;
+        if (voice) {
+          report.field("storyBible", voice.vocabulary, at("voice profile"));
+          report.field("storyBible", voice.notes, at("voice profile"));
+          [...voice.verbalTics, ...voice.neverSays].forEach((v) =>
+            report.field("storyBible", v, at("voice profile"))
+          );
+        }
+        const arc = c.arc;
+        if (arc) {
+          for (const value of [arc.want, arc.need, arc.wound, arc.lie]) {
+            report.field("storyBible", value, at("arc"));
+          }
+          arc.milestones?.forEach((m) => report.field("storyBible", m.note, at("arc")));
+        }
+      }
+      for (const setting of bible?.settings ?? []) {
+        const at = (field: string) => `setting "${setting.name}": ${field}`;
+        report.field("storyBible", setting.name, at("name"));
+        report.field("storyBible", setting.description, at("description"));
+        report.field("storyBible", setting.notes, at("notes"));
+      }
+      for (const theme of bible?.themes ?? []) {
+        if (typeof theme === "string") {
+          report.field("storyBible", theme, "theme");
+        } else {
+          report.field("storyBible", theme.name, `theme "${theme.name}"`);
+          report.field("storyBible", theme.description, `theme "${theme.name}": description`);
+        }
+      }
+      for (const thread of bible?.plotThreads ?? []) {
+        const at = (field: string) => `plot thread "${thread.title}": ${field}`;
+        report.field("plotThreads", thread.title, at("title"));
+        report.field("plotThreads", thread.summary, at("summary"));
+        thread.keywords?.forEach((k) => report.field("plotThreads", k, at("keywords")));
+        thread.touches?.forEach((t) => report.field("plotThreads", t.note, at("touches")));
+        report.field("plotThreads", thread.abandonedReason, at("abandoned reason"));
+      }
+
+      const outline = getOutline();
+      outline?.acts.forEach((act, a) => {
+        report.field("outline", act.act, `act ${a + 1}`);
+        for (const entry of act.chapters) {
+          const at = (field: string) => `outline entry "${entry.title}": ${field}`;
+          report.field("outline", entry.title, at("title"));
+          report.field("outline", entry.synopsis, at("synopsis"));
+          entry.scenes?.forEach((scene) => report.field("outline", scene, at("scenes")));
+        }
+      });
+
+      const { total, locations } = report.result();
+      const language = projectLanguage();
+      const german = baseLanguage(language.tag) === "de";
+
+      return jsonResult({
+        total,
+        locations,
+        ...(german
+          ? {}
+          : {
+              warning: `The project language is "${language.tag}", and this check is built for German. In other languages ordinary words (true, does) are reported. If the book is German, set it with book_project_update language="de".`,
+            }),
+        ...(total
+          ? {
+              hint: "Locate each word with book_find wholeWord=true and fix it with book_replace_text (a dry run first) or book_chapter_replace_text; names and notes with the story bible, outline and plot thread tools. Words spelled this way on purpose go into exclude.",
+            }
+          : { message: "No spelled-out umlauts or ß found." }),
       });
     }
   );
