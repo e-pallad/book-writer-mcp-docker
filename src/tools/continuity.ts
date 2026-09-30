@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import {
   getRegistry,
   getStoryBible,
@@ -22,7 +22,7 @@ interface ContinuityFlag {
   suggestion: string;
 }
 
-export function registerContinuityTools(server: McpServer): void {
+export function registerContinuityTools(server: ToolServer): void {
   server.tool(
     "book_continuity_check",
     "Cross-reference a chapter draft against the story bible for continuity issues",

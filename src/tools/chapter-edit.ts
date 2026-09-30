@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import { readChapterFile, updateRegistry } from "../storage/filestore";
 import { saveChapterContent } from "../storage/writing-log";
 import { saveSnapshot, snapshotIfChanged } from "../storage/history";
@@ -83,7 +83,7 @@ function spliceAll(
   return result + content.slice(cursor);
 }
 
-export function registerChapterEditTools(server: McpServer): void {
+export function registerChapterEditTools(server: ToolServer): void {
   // book_chapter_find
   server.tool(
     "book_chapter_find",

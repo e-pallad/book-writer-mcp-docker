@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import { getStoryBible, updateStoryBible } from "../storage/filestore";
 import { Character, CharacterArc, Setting, PlotThread, Theme } from "../storage/schema";
 import {
@@ -124,7 +124,7 @@ function requireBible() {
   return bible;
 }
 
-export function registerStoryBibleTools(server: McpServer): void {
+export function registerStoryBibleTools(server: ToolServer): void {
   // book_character_add
   server.tool(
     "book_character_add",

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import {
   getAuthorProfile,
   getMatter,
@@ -53,7 +53,7 @@ function describe(section: MatterSection) {
   };
 }
 
-export function registerMatterTools(server: McpServer): void {
+export function registerMatterTools(server: ToolServer): void {
   server.tool(
     "book_matter_set",
     "Add or replace a piece of front or back matter — the parts of a book that are not chapters. The exports set them in the classic order: copyright page, dedication, epigraph, contents, foreword, preface, cast list; after the last chapter the afterword, acknowledgements, glossary, bibliography, about the author, also by. The copyright page, the cast list, the author's bio and the bibliography can be left without content: they are then written at export time from the metadata, the story bible, the author profile and the research notes marked for the bibliography.",

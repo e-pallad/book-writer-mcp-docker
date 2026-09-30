@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import { getStoryBible, getStylesheet, readChapterFile, updateRegistry, updateStylesheet } from "../storage/filestore";
 import { chaptersInOrder, requireProject, resolveChapter } from "../storage/chapters";
 import { ChapterMeta, RevisionPass } from "../storage/schema";
@@ -23,7 +23,7 @@ const PASS_SCHEMA = z
 
 const lang = () => (projectLanguage().tag.toLowerCase().startsWith("de") ? "de" : "en");
 
-export function registerRevisionTools(server: McpServer): void {
+export function registerRevisionTools(server: ToolServer): void {
   // ---------------------------------------------------------------------------
   // Passes
 

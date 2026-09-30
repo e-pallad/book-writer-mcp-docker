@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import {
   getAiDisclosure,
   getAuthorProfile,
@@ -39,7 +39,7 @@ const useSchema = z
     'How this was produced. "ai_generated": an AI tool created it from your prompts — still AI-generated however heavily you edited it afterwards. "ai_assisted": you created it and AI only brainstormed, outlined, edited, refined or error-checked. "none": no AI involved.'
   );
 
-export function registerAiDisclosureTools(server: McpServer): void {
+export function registerAiDisclosureTools(server: ToolServer): void {
   server.tool(
     "book_ai_disclosure_generate",
     [

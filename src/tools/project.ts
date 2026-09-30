@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import { getCoverSpec, updateRegistry } from "../storage/filestore";
 import { Registry } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
@@ -34,7 +34,7 @@ type Editable = Pick<
   | "chapterNumbering"
 >;
 
-export function registerProjectTools(server: McpServer): void {
+export function registerProjectTools(server: ToolServer): void {
   server.tool(
     "book_progress",
     "How the writing is going, day by day: words written today against the daily goal, the current streak, the last 14 days, the average pace, and whether the deadline is in reach. Built from the writing log, which records every change to a chapter made through the tools.",

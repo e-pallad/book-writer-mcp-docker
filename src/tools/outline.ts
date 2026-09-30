@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import {
   getOutline,
   getRegistry,
@@ -19,7 +19,7 @@ function jsonResult(payload: unknown) {
   };
 }
 
-export function registerOutlineTools(server: McpServer): void {
+export function registerOutlineTools(server: ToolServer): void {
   server.tool(
     "book_outline_set",
     "Set or replace the full hierarchical outline. An entry can name the manuscript chapter it stands for (chapterId); entries whose title matches exactly one chapter are linked automatically.",

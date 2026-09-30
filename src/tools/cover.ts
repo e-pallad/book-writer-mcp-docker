@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -80,7 +80,7 @@ function estimatePageCount(wordCount: number): number {
   return Math.ceil(wordCount / 250);
 }
 
-export function registerCoverTools(server: McpServer): void {
+export function registerCoverTools(server: ToolServer): void {
   // book_cover_kdp_specs
   server.tool(
     "book_cover_kdp_specs",

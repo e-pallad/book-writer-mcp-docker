@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -70,7 +70,7 @@ function missingForExpose(concept: Concept | null): string[] {
   ];
 }
 
-export function registerConceptTools(server: McpServer): void {
+export function registerConceptTools(server: ToolServer): void {
   server.tool(
     "book_concept_set",
     "Set what the book is, before anything else: fiction or non-fiction, premise, logline (the book in one sentence), the central question, the readership, comparable titles and what sets it apart — for non-fiction the core argument and what the reader takes away. It is what an exposé is written from. Every field is optional and replaces what was there; an empty string clears it.",

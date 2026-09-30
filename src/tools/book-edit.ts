@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import {
   getOutline,
   getResearch,
@@ -168,7 +168,7 @@ class LintReport {
   }
 }
 
-export function registerBookEditTools(server: McpServer): void {
+export function registerBookEditTools(server: ToolServer): void {
   // book_todo_list
   server.tool(
     "book_todo_list",

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import {
   getRegistry,
   getStoryBible,
@@ -122,7 +122,7 @@ function describe(
   };
 }
 
-export function registerTimelineTools(server: McpServer): void {
+export function registerTimelineTools(server: ToolServer): void {
   // book_timeline_add
   server.tool(
     "book_timeline_add",

@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import * as fs from "fs";
 import * as path from "path";
 import { collectDashboard } from "../dashboard/collect";
 import { renderDashboard } from "../dashboard/render";
 
-export function registerDashboardTools(server: McpServer): void {
+export function registerDashboardTools(server: ToolServer): void {
   server.tool(
     "book_dashboard",
     "Everything worth knowing about the state of the book at once: progress, chapter status, which characters appear in which chapters, how story order compares to chapter order, revision activity, continuity and style findings, and what is still outstanding before publishing. Returns structured data — use book_dashboard_export for a page to look at.",
