@@ -257,6 +257,16 @@ async function applyTitle(
   };
 }
 
+// More than this share of the words gone in one book_chapter_update and it
+// needs confirmShrink.
+const MAX_UNCONFIRMED_SHRINK = 0.3;
+
+function shrinkRefusal(chapter: ChapterMeta, before: number, after: number): string | null {
+  if (before === 0 || before - after <= before * MAX_UNCONFIRMED_SHRINK) return null;
+  const percent = Math.round(((before - after) / before) * 100);
+  return `Refused: the new content has ${after} words, the chapter "${chapter.id}" ("${chapter.title}") has ${before} — ${percent}% shorter. Nothing was written. content replaces the whole chapter, so a partial text deletes the rest. For a partial change use book_chapter_replace_text, book_chapter_append or book_chapter_insert; if the cut is intended, call again with confirmShrink=true.`;
+}
+
 function jsonResult(payload: unknown) {
   return {
     content: [
@@ -434,7 +444,7 @@ export function registerManuscriptTools(server: McpServer): void {
     {
       chapterId: z
         .string()
-        .describe('Chapter ID (e.g. "ch-001") or chapter title'),
+        .describe('Chapter ID (e.g. "ch-001"), chapter title, or "#N" for the Nth chapter in reading order'),
       fromParagraph: z
         .number()
         .optional()
@@ -506,15 +516,24 @@ export function registerManuscriptTools(server: McpServer): void {
   // book_chapter_update
   server.tool(
     "book_chapter_update",
-    "Update a chapter: content, title, synopsis, status, the part it belongs to, or whether it carries a number. Every field is optional, so it can retitle a chapter without touching its prose.",
+    "Update a chapter: content, title, synopsis, status, the part it belongs to, or whether it carries a number. Every field is optional, so it can retitle a chapter without touching its prose. content replaces the WHOLE chapter — for a partial change use book_chapter_replace_text, book_chapter_append or book_chapter_insert instead. A content more than 30% shorter than the current text is refused unless confirmShrink=true.",
     {
       chapterId: z
         .string()
-        .describe('Chapter ID (e.g. "ch-001") or current chapter title'),
+        .describe('Chapter ID (e.g. "ch-001"), current chapter title, or "#N" for the Nth chapter in reading order'),
       content: z
         .string()
         .optional()
-        .describe("Full updated chapter content (leave out to keep the prose)"),
+        .describe(
+          "Full updated chapter content — it replaces the whole chapter (leave out to keep the prose)"
+        ),
+      confirmShrink: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "Set to true to confirm that content is meant to be more than 30% shorter than the current chapter. Without it such an update is refused and nothing is written (default: false)"
+        ),
       title: z
         .string()
         .optional()
@@ -533,7 +552,7 @@ export function registerManuscriptTools(server: McpServer): void {
         .optional()
         .describe("false for a prologue or epilogue that carries no chapter number"),
     },
-    async ({ chapterId, content, title, synopsis, status, part, numbered }) => {
+    async ({ chapterId, content, confirmShrink, title, synopsis, status, part, numbered }) => {
       if (
         content === undefined &&
         title === undefined &&
@@ -554,6 +573,19 @@ export function registerManuscriptTools(server: McpServer): void {
 
       await updateRegistry(async (registry) => {
         chapter = resolveChapter(registry, chapterId);
+
+        // A content that suddenly loses a large part of the chapter is far
+        // more often a partial text sent by mistake than a deliberate cut.
+        // Checked before anything below renames or writes, so a refusal
+        // leaves the chapter exactly as it was.
+        if (content !== undefined && !confirmShrink) {
+          const refused = shrinkRefusal(
+            chapter,
+            countWords(readChapterFile(chapter.filename)),
+            countWords(content)
+          );
+          if (refused) throw new BookMCPError(refused);
+        }
 
         // The previous prose is filed away before anything in this call
         // changes it. This runs ahead of applyTitle because a rename rewrites
@@ -635,7 +667,7 @@ export function registerManuscriptTools(server: McpServer): void {
     {
       chapterId: z
         .string()
-        .describe('Chapter ID (e.g. "ch-001") or current chapter title'),
+        .describe('Chapter ID (e.g. "ch-001"), current chapter title, or "#N" for the Nth chapter in reading order'),
       title: z.string().describe("New chapter title"),
       synopsis: z
         .string()
@@ -680,7 +712,7 @@ export function registerManuscriptTools(server: McpServer): void {
     {
       chapterId: z
         .string()
-        .describe('Chapter ID (e.g. "ch-001") or chapter title'),
+        .describe('Chapter ID (e.g. "ch-001"), chapter title, or "#N" for the Nth chapter in reading order'),
       confirm: z
         .boolean()
         .describe(
@@ -791,7 +823,7 @@ export function registerManuscriptTools(server: McpServer): void {
     {
       chapterId: z
         .string()
-        .describe('Chapter ID (e.g. "ch-001") or chapter title'),
+        .describe('Chapter ID (e.g. "ch-001"), chapter title, or "#N" for the Nth chapter in reading order'),
       newOrder: z.number().describe("New order position"),
     },
     async ({ chapterId, newOrder }) => {

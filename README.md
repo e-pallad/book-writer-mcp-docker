@@ -211,11 +211,14 @@ To pin a version or roll back by hand, set `BOOK_MCP_TAG=sha-<commit>` in `.env`
 | `book_progress` | Today's words against the goal, streak, last 14 days, pace, deadline |
 | `book_chapter_create` | Create a new chapter |
 | `book_chapter_read` | Read a chapter's content and metadata |
-| `book_chapter_update` | Replace a chapter's whole content, or change title, synopsis or status |
+| `book_chapter_update` | Replace a chapter's whole content (a cut of more than 30% needs `confirmShrink`), or change title, synopsis or status |
 | `book_chapter_find` | Find text in a chapter with paragraph numbers and context |
+| `book_chapter_append` | Add paragraphs at the end of a chapter, optionally after a scene break |
+| `book_chapter_insert` | Insert paragraphs before or after a numbered paragraph |
 | `book_find` | Find text across the whole book (whole words, case-insensitive if asked) |
 | `book_replace_text` | Replace text across the book — a dry run unless told otherwise |
 | `book_todo_list` | Placeholders left while drafting: `[TK]`, `[TODO: …]`, `[RECHERCHE: …]` |
+| `book_text_lint` | Umlauts and ß spelled out as ue/ae/oe/ss, across text, titles, story bible, outline and plot threads (read-only) |
 | `book_chapter_replace_text` | Replace one passage in a chapter, leaving the rest untouched |
 | `book_chapter_rename` | Rename a chapter (registry, file name, heading, outline) |
 | `book_chapter_delete` | Delete a chapter (file moves to `.book-mcp/trash/`) |
@@ -597,8 +600,22 @@ to the next chapter created. That is why a delete also moves the chapter's saved
 versions to `.book-mcp/trash/`: a new chapter must never inherit the revision
 history of the one it replaced.
 
-Both tools (and every other chapter tool) accept either a chapter id or the
-current chapter title.
+Both tools (and every other chapter tool) accept a chapter id, the current
+chapter title, or `#N` for the Nth chapter in reading order.
+
+### Naming a chapter in a tool call
+
+| Form | Example | Notes |
+|---|---|---|
+| Id | `ch-011` | Handed out in creation order and never renumbered, so after a reorder `ch-011` can be the eighth chapter. |
+| Position | `#8`, `# 8` | The eighth chapter in reading order, as `book_chapter_list` shows it. |
+| Title | `Über die Brücke` | Case-insensitive. `Ueber die Bruecke` finds it too: for the comparison only, ue/ae/oe/ss count as ü/ä/ö/ß. |
+
+The id is tried first, then the exact title, then the position, then the title
+with umlauts folded — so a chapter that answered to a name before still does,
+and `Masse` finds the chapter *Masse* even when there is also one called *Maße*.
+When a name fits several chapters, the call is refused with the candidates,
+each with its id, title and position.
 
 ## Plot Threads and Themes
 
@@ -723,10 +740,12 @@ something to say — a chapter with no logged events is never second-guessed.
 `book_chapter_update` replaces the **whole** chapter. That is what it is for, but
 it makes a small correction expensive — the entire text has to be sent back — and
 it is unforgiving: passing a single paragraph to it replaces the chapter with
-that paragraph and the rest is gone.
+that paragraph and the rest is gone. So it refuses a `content` that is more than
+30% shorter (in words) than the chapter as it stands, names both word counts, and
+writes nothing; pass `confirmShrink: true` when the cut is intended.
 
-For a small edit, use the pair below instead. Nothing about `book_chapter_update`
-changes; this is a second route.
+For a small edit, use the pair below instead; to add text, use
+`book_chapter_append` or `book_chapter_insert` (next section).
 
 ```
 book_chapter_find chapterId="ch-003" query="Das Wasser war grau"
@@ -749,10 +768,34 @@ byte-for-byte as it was.
 | Counting | Non-overlapping, as a replacement behaves: `aa` occurs once in `aaa`, not twice. |
 | History | The previous text is filed before the write, so `book_chapter_revert` undoes the edit. |
 | Locking | The read, the match and the write run under the same lock `book_chapter_update` uses. |
-| Reply | Match count, word count before and after, and up to three short excerpts — capped, because a `replaceAll` over forty occurrences would otherwise cost more than reading the chapter. Never the chapter text. |
+| `expectedCount` | Optional: the number of occurrences you expect, from a dry run or `book_chapter_find`. If the chapter has a different number by the time the edit runs, nothing is written. |
+| Reply | Match count, word count before and after, the paragraph numbers of the changes (in the text after the edit), and up to three short excerpts — capped, because a `replaceAll` over forty occurrences would otherwise cost more than reading the chapter. Never the chapter text. |
 
 `dryRun: true` reports what would change, including the reason an edit would be
-refused, and writes nothing.
+refused, and writes nothing. When it would succeed it also names the
+`expectedCount` to pass.
+
+### Adding text to a chapter
+
+`book_chapter_append` adds paragraphs at the end of a chapter;
+`book_chapter_insert` puts them before or after a numbered paragraph. Neither
+needs the chapter sent back, and neither touches a character of the existing
+text beyond the blank line at the seam.
+
+```
+book_chapter_append chapterId="#8" content="Drei Tage später …" sceneBreak=true
+book_chapter_insert chapterId="ch-011" afterParagraph=12 content="Eine Möwe schrie."
+```
+
+| | |
+|---|---|
+| Seam | Exactly one blank line between the new text and its neighbours, whatever blank lines the new text arrives with. The new text is always paragraphs of its own, never merged into a neighbouring one. |
+| `sceneBreak` | Append only: a scene break goes in front instead of a plain blank line — the marker the chapter already uses, or `* * *`. Left out, and said so, when the chapter has no prose yet. |
+| Paragraphs | Numbered from 1 as `book_chapter_find` and `book_chapter_read` number them; give `afterParagraph` or `beforeParagraph`, not both. A number past the end is refused. |
+| History | The previous text is always filed first, so `book_chapter_revert` undoes the addition. |
+| Reply | Chapter id, the new word count, the words added, the number of the first new paragraph and how many were added. `book_chapter_insert` adds up to 60 characters of each neighbour so the placement can be checked. Never the chapter text. |
+
+`dryRun: true` reports the same numbers and writes nothing.
 
 A replacement is spliced in literally: prose containing `$&` or `$1` survives
 intact, which it would not if this went through `String.replace`.
@@ -797,6 +840,25 @@ chapter exactly as before.
 ```
 book_chapter_read chapterId="ch-003" fromParagraph=12 toParagraph=14
 ```
+
+### Umlauts spelled out
+
+`book_text_lint` looks for ü, ä, ö and ß typed as *ue*, *ae*, *oe* and *ss* —
+*ueber*, *Maedchen*, *Strasse*, *heiss* — in the chapter text, chapter titles
+and synopses, the story bible, the outline and the plot threads. It only reads,
+and replies with a count per place and at most three examples each (chapter
+examples with their paragraph number), never the text itself.
+
+German is full of correct *ue*, *ae*, *oe* and *ss*, so it is a heuristic tuned
+for few false alarms: after a vowel (*Feuer*, *Bauer*) or a *q* (*Quelle*) and
+at the end of a word (*Oboe*, *Statue*) nothing is reported, nor the Latin
+endings of *aktuell* or *Duett*; *ss* only where ß is required — after *ei*,
+*ie*, *eu*, *äu* (*heiss*, *liess*), in *aussen*/*ausser*, and in a few common
+long-vowel words (*Strasse*, *gross*, *Fuss*, *Spass*) — never after a short
+vowel (*muss*, *Wasser*) or in compounds like *aussehen* and *Eisschrank*. A
+built-in list (*Michael*, *Feuer*, *Poet*, *Goethe*, …) is skipped, and
+`exclude` adds your own; entries match inside a word, so *Mueller* covers
+*Muellers*. In a project not set to German it runs, but warns.
 
 ## Scenes
 
@@ -940,8 +1002,10 @@ counted, and a language without rules is told so rather than analysed badly.
 
 ## Chapter Version History
 
-Every `book_chapter_update` that changes the prose files the previous text away
-first, under `.book-mcp/history/<chapter-id>/<timestamp>.md`. Nothing has to be
+Every `book_chapter_update` that changes the prose — and every
+`book_chapter_replace_text`, `book_chapter_append` and `book_chapter_insert` —
+files the previous text away first, under
+`.book-mcp/history/<chapter-id>/<timestamp>.md`. Nothing has to be
 switched on, and an update that only touches the title, synopsis or status does
 not create a version — neither does resubmitting prose that is byte-identical to
 what is already there.

@@ -72,9 +72,19 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 ## Workflow for a Small Correction
 1. `book_chapter_find` — locate the passage and confirm the phrase is unique
 2. `book_chapter_replace_text` — replace just that passage; the rest of the
-   chapter is untouched and the previous version is filed automatically
+   chapter is untouched and the previous version is filed automatically. Pass
+   `expectedCount` with `replaceAll` so a changed chapter is not edited blind
 3. `book_chapter_read fromParagraph=... toParagraph=...` — re-read only the
    part that changed, rather than the whole chapter
+
+## Workflow for Continuing or Extending a Chapter
+- `book_chapter_append content=...` — add the next paragraphs at the end;
+  `sceneBreak=true` starts a new scene
+- `book_chapter_insert afterParagraph=N content=...` (or `beforeParagraph`) —
+  add a passage in the middle; `book_chapter_find` gives the paragraph number
+- Both file the previous version, so `book_chapter_revert` undoes them
+- Chapters can be named by position: `chapterId="#8"` is the eighth chapter in
+  reading order, whatever its id
 
 ## Workflow for a Change Across the Book
 1. `book_find` — see every occurrence first (use `wholeWord=true` for words and names)
@@ -204,8 +214,15 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
   book_chapter_update already saves the previous version
 - NEVER pass a single paragraph to book_chapter_update: it replaces the WHOLE
   chapter, so everything else is lost. For a small edit use
-  book_chapter_replace_text, which changes only the passage it matches
+  book_chapter_replace_text, which changes only the passage it matches; to add
+  text use book_chapter_append or book_chapter_insert
 - Prefer book_chapter_find + book_chapter_replace_text over re-sending a whole
   chapter; reserve book_chapter_update content=... for a genuine full rewrite
+- If book_chapter_update refuses a content as more than 30% shorter, do NOT
+  simply retry with confirmShrink=true — check first that the cut is what the
+  author wants; usually a partial text was sent by mistake
+- Run book_text_lint on a German book when text came in without umlauts
+  (ueber, Strasse); fix hits with book_replace_text, names on purpose go in
+  exclude
 - Offer book_chapter_revert instead of rewriting from memory when the author
   dislikes a revision; the earlier text is still on disk

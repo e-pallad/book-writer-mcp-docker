@@ -424,3 +424,127 @@ test("concurrent replacements on one chapter do not lose each other", async (t) 
   assert.ok(after.content.includes("Mara stand auf der Kaimauer."), "first edit survived");
   assert.ok(after.content.includes("Später blieb die Tür offen."), "second edit survived");
 });
+
+// ---------------------------------------------------------------------------
+// expectedCount and the compact reply
+
+test("expectedCount that no longer matches: nothing is written", async (t) => {
+  const { dir, api, chapterId } = await seed(t);
+  const before = await readFile(dir, api);
+
+  await assert.rejects(
+    () =>
+      callJson(api, "book_chapter_replace_text", {
+        chapterId,
+        oldText: "Das Wasser war grau.",
+        newText: "Das Wasser war schwarz.",
+        replaceAll: true,
+        expectedCount: 3,
+      }),
+    /Expected 3 occurrence\(s\) but found 2/
+  );
+
+  assert.equal(await readFile(dir, api), before, "the chapter must be untouched");
+  const history = await callJson(api, "book_chapter_history_list", { chapterId });
+  assert.equal(history.snapshotCount, 0, "a refused edit files no version");
+});
+
+test("expectedCount guards a single replacement too", async (t) => {
+  const { dir, api, chapterId } = await seed(t);
+  const before = await readFile(dir, api);
+
+  await assert.rejects(
+    () =>
+      callJson(api, "book_chapter_replace_text", {
+        chapterId,
+        oldText: "Kell flickte Netze und sagte nichts.",
+        newText: "x",
+        expectedCount: 0,
+      }),
+    /Expected 0 occurrence\(s\) but found 1/
+  );
+  assert.equal(await readFile(dir, api), before);
+
+  const done = await callJson(api, "book_chapter_replace_text", {
+    chapterId,
+    oldText: "Kell flickte Netze und sagte nichts.",
+    newText: "Kell pfiff.",
+    expectedCount: 1,
+  });
+  assert.equal(done.replaced, 1);
+});
+
+test("a matching expectedCount applies the replacement", async (t) => {
+  const { api, chapterId } = await seed(t);
+
+  const dry = await callJson(api, "book_chapter_replace_text", {
+    chapterId,
+    oldText: "Das Wasser war grau.",
+    newText: "Das Wasser war schwarz.",
+    replaceAll: true,
+    dryRun: true,
+  });
+  assert.match(dry.next, /expectedCount=2/);
+  assert.deepEqual(dry.paragraphs, [2, 3]);
+
+  const result = await callJson(api, "book_chapter_replace_text", {
+    chapterId,
+    oldText: "Das Wasser war grau.",
+    newText: "Das Wasser war schwarz.",
+    replaceAll: true,
+    expectedCount: dry.matches,
+  });
+  assert.equal(result.replaced, 2);
+});
+
+test("dryRun reports an expectedCount mismatch as the reason it would fail", async (t) => {
+  const { api, chapterId } = await seed(t);
+
+  const dry = await callJson(api, "book_chapter_replace_text", {
+    chapterId,
+    oldText: "Das Wasser war grau.",
+    newText: "x",
+    replaceAll: true,
+    expectedCount: 5,
+    dryRun: true,
+  });
+  assert.equal(dry.wouldSucceed, false);
+  assert.equal(dry.wouldReplace, 0);
+  assert.match(dry.wouldFailWith, /Expected 5 occurrence\(s\) but found 2/);
+});
+
+test("the reply names the count, both word counts and the paragraphs changed — never the text", async (t) => {
+  const { api, chapterId } = await seed(t);
+
+  const result = await callJson(api, "book_chapter_replace_text", {
+    chapterId,
+    oldText: "Das Wasser war grau.",
+    newText: "Das Wasser war sehr grau.",
+    replaceAll: true,
+  });
+
+  assert.equal(result.replaced, 2);
+  assert.equal(result.wordCountAfter, result.wordCountBefore + 2);
+  assert.deepEqual(result.paragraphs, [2, 3]);
+  assert.ok(!JSON.stringify(result).includes(CHAPTER.trim()), "no full text in the reply");
+});
+
+test("paragraph numbers are those of the text after the edit", async (t) => {
+  const { api, chapterId } = await seed(t);
+
+  // The first replacement splits paragraph 2 in two, so the second one —
+  // paragraph 3 before the edit — is paragraph 4 afterwards.
+  const result = await callJson(api, "book_chapter_replace_text", {
+    chapterId,
+    oldText: "Das Wasser war grau.",
+    newText: "Das Wasser.\n\nWar grau.",
+    replaceAll: true,
+  });
+
+  assert.deepEqual(result.paragraphs, [2, 4]);
+  const found = await callJson(api, "book_chapter_find", { chapterId, query: "Das Wasser." });
+  assert.deepEqual(
+    found.occurrences.map((o) => o.paragraph),
+    result.paragraphs
+  );
+});

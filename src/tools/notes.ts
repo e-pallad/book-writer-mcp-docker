@@ -32,7 +32,7 @@ export function registerNoteTools(server: McpServer): void {
     "book_note_add",
     "Record a note from a test reader, an editor or the author on a chapter — anchored to the passage it is about, so it follows the passage through revisions. Use it to collect feedback where it belongs instead of in the conversation.",
     {
-      chapterId: z.string().describe('Chapter ID (e.g. "ch-001") or chapter title'),
+      chapterId: z.string().describe('Chapter ID (e.g. "ch-001"), chapter title, or "#N" for the Nth chapter in reading order'),
       text: z.string().describe("The note itself"),
       source: z
         .string()

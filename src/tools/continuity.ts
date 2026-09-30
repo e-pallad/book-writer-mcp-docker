@@ -27,7 +27,7 @@ export function registerContinuityTools(server: McpServer): void {
     "book_continuity_check",
     "Cross-reference a chapter draft against the story bible for continuity issues",
     {
-      chapterId: z.string().describe('Chapter ID (e.g. "ch-001") or chapter title'),
+      chapterId: z.string().describe('Chapter ID (e.g. "ch-001"), chapter title, or "#N" for the Nth chapter in reading order'),
     },
     async ({ chapterId }) => {
       const registry = getRegistry();

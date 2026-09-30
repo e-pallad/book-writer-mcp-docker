@@ -15,6 +15,18 @@ export function normalizeForCompare(value: string): string {
   return toNFC(value).toLowerCase();
 }
 
+// For matching a name the way a German writer may have typed it: "Ueber die
+// Bruecke" finds "Über die Brücke", "Strasse" finds "Straße". Only ever used to
+// compare, never to store — both sides are folded to the same ASCII spelling,
+// so the text on disk keeps its umlauts.
+export function foldUmlauts(value: string): string {
+  return normalizeForCompare(value)
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss");
+}
+
 // Letters that carry no diacritic to strip, so NFKD alone would drop them.
 const TRANSLITERATIONS: Record<string, string> = {
   ß: "ss",
@@ -206,6 +218,27 @@ export function splitParagraphs(text: string): Paragraph[] {
     end: text.length,
   });
   return paragraphs;
+}
+
+/**
+ * The paragraph of each of several offsets, 1-based, in one pass over the
+ * text. `offsets` must be sorted ascending; the result is in the same order.
+ * The same numbering as paragraphNumberAt, without rescanning the text from
+ * the start for every offset of a long replaceAll.
+ */
+export function paragraphNumbersAt(text: string, offsets: number[]): number[] {
+  const pattern = new RegExp(PARAGRAPH_BREAK.source, "g");
+  const breakEnds: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    breakEnds.push(match.index + match[0].length);
+  }
+
+  let passed = 0;
+  return offsets.map((offset) => {
+    while (passed < breakEnds.length && breakEnds[passed] <= offset) passed++;
+    return passed + 1;
+  });
 }
 
 /** Which paragraph a character offset falls in, 1-based. */
