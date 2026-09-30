@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import { getStoryBible, readChapterFile, updateScenes } from "../storage/filestore";
 import { chaptersInOrder, requireProject, resolveChapter } from "../storage/chapters";
 import { resolveCharacter } from "../storage/bible";
@@ -16,7 +16,7 @@ function jsonResult(payload: unknown) {
   };
 }
 
-export function registerSceneTools(server: McpServer): void {
+export function registerSceneTools(server: ToolServer): void {
   server.tool(
     "book_scene_list",
     "The scenes of a chapter — or of the whole book — as the scene breaks divide them: number, paragraph range, length, opening words, and what has been noted about each (point of view, setting, time, goal, conflict, outcome). Also how the book's words are shared between point-of-view characters.",

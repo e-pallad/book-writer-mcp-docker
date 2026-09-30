@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import { getOutline, getStoryBible, readChapterFile, updateOutline } from "../storage/filestore";
 import { requireProject, resolveChapter } from "../storage/chapters";
 import { BookMCPError } from "../utils/errors";
@@ -17,7 +17,7 @@ function jsonResult(payload: unknown) {
 
 const lang = () => (projectLanguage().tag.toLowerCase().startsWith("de") ? "de" : "en");
 
-export function registerStructureTools(server: McpServer): void {
+export function registerStructureTools(server: ToolServer): void {
   server.tool(
     "book_structure_templates",
     "The story structures available — three-act, hero's journey, Save the Cat, Freytag's pyramid, seven-point — with their turning points and where each conventionally falls in the book.",

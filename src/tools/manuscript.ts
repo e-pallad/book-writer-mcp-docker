@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import {
   getRegistry,
   getTimeline,
@@ -280,7 +280,7 @@ function jsonResult(payload: unknown) {
   };
 }
 
-export function registerManuscriptTools(server: McpServer): void {
+export function registerManuscriptTools(server: ToolServer): void {
   // book_init
   server.tool(
     "book_init",
@@ -747,8 +747,10 @@ export function registerManuscriptTools(server: McpServer): void {
     async ({ chapterId, confirm, keepFile, brief }) => {
       let chapter!: ChapterMeta;
       let references!: string[];
-      let trashedPath: string | null = null;
-      let trashedHistory: { path: string; count: number } | null = null;
+      // Set inside the registry transaction; typed with `as` so TypeScript
+      // does not narrow them to null for the reply after it.
+      let trashedPath = null as string | null;
+      let trashedHistory = null as { path: string; count: number } | null;
       let remaining!: ChapterMeta[];
 
       await updateRegistry((registry) => {

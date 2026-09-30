@@ -1595,25 +1595,26 @@ npm run build     # esbuild bundles for both transports
 
 ### Type checking
 
-`npm run typecheck` covers `src/utils`, `src/storage`, `src/auth`, `src/http`
-and the pure-logic tool modules — everything where the logic lives. It runs in
-about a second.
+`npm run typecheck` checks all of `src`, the tool modules included, in a few
+seconds; CI runs it before the tests. The build itself uses esbuild, which
+strips types without checking them, so this is the only place a type error is
+caught.
 
-It deliberately leaves out the tool-registration modules, and the reason is
-worth knowing before you try to "fix" it: **a full-project `tsc` does not
-complete.** Every `server.tool()` call with a zod shape triggers
-`TS2589: Type instantiation is excessively deep and possibly infinite`. One
-such file takes ~90 seconds on its own; across all thirteen of them the
-compiler exhausts even a 13 GB heap and dies. This comes from the MCP SDK's
-`ZodRawShape` inference rather than from anything here, it is unaffected by the
-zod version (3.25 behaves the same as 3.22), and it predates this config — the
-project has never been fully type-checkable, which went unnoticed because the
-build uses esbuild, and esbuild strips types without checking them.
+The tool modules do not register their tools on the SDK's `McpServer`
+directly but on `ToolServer` (`src/tools/tool-server.ts`), a small interface
+of our own that `createServer` wraps around the real server. The reason is
+worth knowing before you undo it: the SDK's `server.tool()` and
+`registerTool()` infer each tool's arguments through a compatibility layer for
+zod 3 and zod 4 that TypeScript cannot finish. With them, checking a single
+module with four tools took 140 seconds and 2.8 GB of memory and still ended in
+`TS2589: Type instantiation is excessively deep and possibly infinite`; the
+whole project never completed. `ToolServer` gives each handler its arguments as
+`z.infer` of its schema instead, and passes the call to `registerTool` with one
+cast — the SDK validates every call against the schema at runtime exactly as
+before.
 
-Those modules are covered instead by esbuild (imports and syntax) and by the
-test suite, which exercises every tool through its real handler and zod schema.
-If the SDK's inference is fixed upstream, widen the `include` in
-`tsconfig.typecheck.json` and delete this section.
+When adding a tool module, take `server: ToolServer`, not `McpServer`, and
+register the module in `createServer`.
 
 ## Requirements
 

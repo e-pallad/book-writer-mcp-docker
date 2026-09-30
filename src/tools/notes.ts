@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import { getNotes, readChapterFile, updateNotes } from "../storage/filestore";
 import { requireProject, resolveChapter } from "../storage/chapters";
 import { Note } from "../storage/schema";
@@ -28,7 +28,7 @@ function newId(existing: Note[]): string {
 // to survive an edit further down the paragraph.
 const PARAGRAPH_ANCHOR_CHARS = 60;
 
-export function registerNoteTools(server: McpServer): void {
+export function registerNoteTools(server: ToolServer): void {
   server.tool(
     "book_note_add",
     "Record a note from a test reader, an editor or the author on a chapter — anchored to the passage it is about, so it follows the passage through revisions. Use it to collect feedback where it belongs instead of in the conversation.",

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import * as fs from "fs";
 import * as path from "path";
 import { getRegistry } from "../storage/filestore";
@@ -21,7 +21,7 @@ const includeChaptersSchema = z
     "Chapter IDs or titles to include (default: all review + final chapters, or every chapter when none is marked ready)"
   );
 
-export function registerExportTools(server: McpServer): void {
+export function registerExportTools(server: ToolServer): void {
   server.tool(
     "book_export_markdown",
     "Compile the book into a single markdown file: title block, front matter, chapters in order (with part headings and chapter numbers when set), back matter.",

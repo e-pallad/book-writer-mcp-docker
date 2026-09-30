@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import * as fs from "fs";
 import * as path from "path";
 import { randomUUID } from "crypto";
@@ -293,7 +293,7 @@ ${meta.genre ? `    <p class="genre">${escapeHtml(meta.genre)}</p>\n` : ""}  </s
   );
 }
 
-export function registerEpubTools(server: McpServer): void {
+export function registerEpubTools(server: ToolServer): void {
   server.tool(
     "book_export_epub",
     "Compile the manuscript into a valid EPUB3 file, with a title page, a generated table of contents from the chapter titles, and the author taken from the author profile when one exists.",

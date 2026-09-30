@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import { getCoverSpec, getMetadata, updateMetadata } from "../storage/filestore";
 import { requireProject } from "../storage/chapters";
 import { ContributorRole, PublishingMetadata } from "../storage/schema";
@@ -49,7 +49,7 @@ function report(metadata: PublishingMetadata | null) {
   };
 }
 
-export function registerMetadataTools(server: McpServer): void {
+export function registerMetadataTools(server: ToolServer): void {
   server.tool(
     "book_metadata_set",
     `Set the book's publishing metadata: subtitle, series, description (the blurb — the one copy the cover spec and the exports use), keywords (KDP takes ${LIMITS.keywords}), categories (KDP takes ${LIMITS.categories}), an ISBN per edition, publisher, publication date, copyright and contributors. Every field is optional and replaces what was there; an empty string or list clears it. Values KDP would reject — an eighth keyword, an ISBN with a wrong check digit — are refused.`,

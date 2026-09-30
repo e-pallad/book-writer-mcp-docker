@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import {
   getRegistry,
   getAuthorProfile,
@@ -241,7 +241,7 @@ function genreNoun(genre: string): string {
   return "book";
 }
 
-export function registerAuthorTools(server: McpServer): void {
+export function registerAuthorTools(server: ToolServer): void {
   // book_author_from_linkedin
   server.tool(
     "book_author_from_linkedin",

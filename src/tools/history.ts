@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import {
   readChapterFile,
   updateRegistry,
@@ -23,7 +23,7 @@ function jsonResult(payload: unknown) {
   };
 }
 
-export function registerHistoryTools(server: McpServer): void {
+export function registerHistoryTools(server: ToolServer): void {
   // book_chapter_history_list
   server.tool(
     "book_chapter_history_list",

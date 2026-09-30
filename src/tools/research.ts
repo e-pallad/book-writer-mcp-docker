@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import { getResearch, updateResearch } from "../storage/filestore";
 import { requireProject, resolveChapter } from "../storage/chapters";
 import { chapterRef } from "../storage/bible";
@@ -56,7 +56,7 @@ export function researchFor(note: string, entries: ResearchEntry[]): { id: strin
     .map((e) => ({ id: e.id, title: e.title }));
 }
 
-export function registerResearchTools(server: McpServer): void {
+export function registerResearchTools(server: ToolServer): void {
   server.tool(
     "book_research_add",
     "Keep a piece of research — a fact, a source, a quotation, a note from a visit — with the chapters it is used in and tags to find it by. Mark a source bibliography=true to list it in the book's bibliography.",

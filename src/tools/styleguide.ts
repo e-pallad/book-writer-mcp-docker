@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import {
   getStoryBible,
   getStyleGuide,
@@ -18,7 +18,7 @@ import { languageNote, projectLanguage } from "../lang";
 import { checkStyle } from "./style-rules";
 import { briefSchema, writeReply } from "./brief";
 
-export function registerStyleGuideTools(server: McpServer): void {
+export function registerStyleGuideTools(server: ToolServer): void {
   server.tool(
     "book_style_set",
     "Set the full style guide for the book",

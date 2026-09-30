@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ToolServer } from "./tool-server";
 import * as fs from "fs";
 import * as path from "path";
 import { getRegistry } from "../storage/filestore";
@@ -45,7 +45,7 @@ function safeWriteFile(filePath: string, content: string, description: string): 
   }
 }
 
-export function registerPreviewTools(server: McpServer): void {
+export function registerPreviewTools(server: ToolServer): void {
   server.tool(
     "book_preview",
     "Generate a beautiful HTML preview of the manuscript for reading in a browser",

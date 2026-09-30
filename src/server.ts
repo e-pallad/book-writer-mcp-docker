@@ -24,6 +24,7 @@ import { registerConceptTools } from "./tools/concept";
 import { registerStructureTools } from "./tools/structure";
 import { registerRevisionTools } from "./tools/revision";
 import { registerResearchTools } from "./tools/research";
+import { toolServer } from "./tools/tool-server";
 
 // Builds a fully configured server instance. Shared by every transport so the
 // stdio and HTTP entry points always expose the same tools.
@@ -34,31 +35,32 @@ export function createServer(): McpServer {
   });
 
   // Register all tool modules
-  registerManuscriptTools(server);
-  registerProjectTools(server);
-  registerConceptTools(server);
-  registerHistoryTools(server);
-  registerChapterEditTools(server);
-  registerNoteTools(server);
-  registerSceneTools(server);
-  registerBookEditTools(server);
-  registerStoryBibleTools(server);
-  registerTimelineTools(server);
-  registerResearchTools(server);
-  registerOutlineTools(server);
-  registerStructureTools(server);
-  registerStyleGuideTools(server);
-  registerRevisionTools(server);
-  registerContinuityTools(server);
-  registerExportTools(server);
-  registerEpubTools(server);
-  registerCoverTools(server);
-  registerMetadataTools(server);
-  registerMatterTools(server);
-  registerAiDisclosureTools(server);
-  registerAuthorTools(server);
-  registerPreviewTools(server);
-  registerDashboardTools(server);
+  const tools = toolServer(server);
+  registerManuscriptTools(tools);
+  registerProjectTools(tools);
+  registerConceptTools(tools);
+  registerHistoryTools(tools);
+  registerChapterEditTools(tools);
+  registerNoteTools(tools);
+  registerSceneTools(tools);
+  registerBookEditTools(tools);
+  registerStoryBibleTools(tools);
+  registerTimelineTools(tools);
+  registerResearchTools(tools);
+  registerOutlineTools(tools);
+  registerStructureTools(tools);
+  registerStyleGuideTools(tools);
+  registerRevisionTools(tools);
+  registerContinuityTools(tools);
+  registerExportTools(tools);
+  registerEpubTools(tools);
+  registerCoverTools(tools);
+  registerMetadataTools(tools);
+  registerMatterTools(tools);
+  registerAiDisclosureTools(tools);
+  registerAuthorTools(tools);
+  registerPreviewTools(tools);
+  registerDashboardTools(tools);
 
   return server;
 }
