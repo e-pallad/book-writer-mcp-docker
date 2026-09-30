@@ -218,11 +218,11 @@ To pin a version or roll back by hand, set `BOOK_MCP_TAG=sha-<commit>` in `.env`
 | `book_find` | Find text across the whole book (whole words, case-insensitive if asked) |
 | `book_replace_text` | Replace text across the book — a dry run unless told otherwise |
 | `book_todo_list` | Placeholders left while drafting: `[TK]`, `[TODO: …]`, `[RECHERCHE: …]` |
-| `book_text_lint` | Umlauts and ß spelled out as ue/ae/oe/ss, across text, titles, story bible, outline and plot threads (read-only) |
+| `book_text_lint` | Umlauts and ß spelled out as ue/ae/oe/ss, across text, titles, synopses, story bible, settings, outline and plot threads (read-only) |
 | `book_chapter_replace_text` | Replace one passage in a chapter, leaving the rest untouched |
 | `book_chapter_rename` | Rename a chapter (registry, file name, heading, outline) |
 | `book_chapter_delete` | Delete a chapter (file moves to `.book-mcp/trash/`) |
-| `book_chapter_list` | List all chapters with status and word counts |
+| `book_chapter_list` | List the chapters with status and word counts — all, one act, or a page (`act`, `fromChapter`, `limit`) |
 | `book_chapter_reorder` | Change chapter order |
 | `book_chapter_history_list` | List a chapter's saved versions with a per-version diff summary |
 | `book_chapter_revert` | Restore a saved version (the text it replaces is saved first) |
@@ -272,7 +272,7 @@ To pin a version or roll back by hand, set `BOOK_MCP_TAG=sha-<commit>` in `.env`
 | Tool | What it does |
 |------|-------------|
 | `book_outline_set` | Set the full hierarchical outline; entries can be linked to chapters |
-| `book_outline_get` | Retrieve the outline, with each entry's chapter and its status |
+| `book_outline_get` | Retrieve the outline, numbered, with each entry's chapter and its status — all, one act, or a page (`act`, `fromChapter`, `limit`) |
 | `book_outline_update_chapter` | Update an entry's synopsis, scenes or link — found by title or by its chapter |
 | `book_outline_link` | Link entries to the chapters written from them, where the title is unambiguous |
 | `book_outline_compare` | Plan against manuscript: not yet written, not planned, moved, retitled |
@@ -615,7 +615,14 @@ The id is tried first, then the exact title, then the position, then the title
 with umlauts folded — so a chapter that answered to a name before still does,
 and `Masse` finds the chapter *Masse* even when there is also one called *Maße*.
 When a name fits several chapters, the call is refused with the candidates,
-each with its id, title and position.
+each with its id, title and position. The timeline tools take chapters the same
+way.
+
+Other titles are looked up the same way, exact title first and folded second:
+outline entries (`book_outline_update_chapter chapterTitle=...`,
+`book_chapter_create outlineTitle=...`) and plot threads (`threadId` given as a
+title). What is stored keeps the spelling it had; the folding is only ever
+used to compare.
 
 ## Plot Threads and Themes
 
@@ -793,7 +800,7 @@ book_chapter_insert chapterId="ch-011" afterParagraph=12 content="Eine Möwe sch
 | `sceneBreak` | Append only: a scene break goes in front instead of a plain blank line — the marker the chapter already uses, or `* * *`. Left out, and said so, when the chapter has no prose yet. |
 | Paragraphs | Numbered from 1 as `book_chapter_find` and `book_chapter_read` number them; give `afterParagraph` or `beforeParagraph`, not both. A number past the end is refused. |
 | History | The previous text is always filed first, so `book_chapter_revert` undoes the addition. |
-| Reply | Chapter id, the new word count, the words added, the number of the first new paragraph and how many were added. `book_chapter_insert` adds up to 60 characters of each neighbour so the placement can be checked. Never the chapter text. |
+| Reply | Chapter id, the new word count, the words added, the number of the first new paragraph and how many were added. `book_chapter_insert` adds up to 60 characters of each neighbour so the placement can be checked. Never the chapter text. With `brief: true` only id, status, word count and the first new paragraph. |
 
 `dryRun: true` reports the same numbers and writes nothing.
 
@@ -844,10 +851,11 @@ book_chapter_read chapterId="ch-003" fromParagraph=12 toParagraph=14
 ### Umlauts spelled out
 
 `book_text_lint` looks for ü, ä, ö and ß typed as *ue*, *ae*, *oe* and *ss* —
-*ueber*, *Maedchen*, *Strasse*, *heiss* — in the chapter text, chapter titles
-and synopses, the story bible, the outline and the plot threads. It only reads,
-and replies with a count per place and at most three examples each (chapter
-examples with their paragraph number), never the text itself.
+*ueber*, *Maedchen*, *Strasse*, *heiss* — in the chapter text, chapter titles,
+synopses and scene summaries, the story bible, the settings (the book's places),
+the outline and the plot threads. It only reads, and replies with a count per
+place and at most three examples each (chapter examples with their paragraph
+number), never the text itself.
 
 German is full of correct *ue*, *ae*, *oe* and *ss*, so it is a heuristic tuned
 for few false alarms: after a vowel (*Feuer*, *Bauer*) or a *q* (*Quelle*) and
@@ -859,6 +867,56 @@ vowel (*muss*, *Wasser*) or in compounds like *aussehen* and *Eisschrank*. A
 built-in list (*Michael*, *Feuer*, *Poet*, *Goethe*, …) is skipped, and
 `exclude` adds your own; entries match inside a word, so *Mueller* covers
 *Muellers*. In a project not set to German it runs, but warns.
+
+## Keeping Replies Small
+
+A long book makes long replies, and every reply is read again on each later
+turn. Two things keep them down.
+
+### `brief` on every write
+
+Every tool that changes the book takes `brief: true`. Its reply is then only
+what was written — its id, its status and, for a chapter, its word count —
+instead of the whole object echoed back:
+
+```
+book_chapter_update chapterId="#8" status="review" brief=true
+→ { "id": "ch-011", "status": "review", "wordCount": 3412 }
+```
+
+| | |
+|---|---|
+| `id` | The id of what was written: chapter, character, setting, plot thread, note, event, research entry. For the book's single documents a fixed name (`project`, `outline`, `style`, `concept`, `metadata`, `cover`, `author`, `aiDisclosure`); for a theme, influence, style-sheet entry or matter section its name. |
+| `status` | Its own status where it has one (a chapter's `draft`…`final`, a plot thread's `open`/`resolved`/`abandoned`, a note's `open`/`resolved`), otherwise what happened to it: `created`, `updated`, `unchanged` or `deleted`. |
+| `wordCount` | For a chapter, its count after the write (for `book_project_update`, the book's). |
+| `firstNewParagraph` | `book_chapter_append` and `book_chapter_insert`: where the new text starts. |
+| `chapters` | A write across several chapters (`book_replace_text`, `book_character_rename`, `book_revision_mark`) reports each changed chapter with id, status and word count. |
+| `warnings` | Kept: anything that went differently than asked — a dangling reference after a delete, a name form a rename left alone, a skipped scene break. |
+
+Dry runs ignore `brief` — the report is what a dry run is for. Exports and
+previews write output files rather than the book and do not take it.
+
+### Paging through the chapter list and the outline
+
+`book_chapter_list` and `book_outline_get` return everything when called bare,
+as before. For a long book they take:
+
+| | |
+|---|---|
+| `act` | Only one act of the outline, by number (`2`) or name (`"Zweiter Akt"`; ue/ae/oe/ss fold as for titles). The chapter list finds an act's chapters through the outline entries linked to them. |
+| `fromChapter` | Where to start. The chapter list counts in reading order (as `#N` does) and also takes an id or title; the outline counts its entries across all acts and also takes an entry's title or the manuscript chapter it stands for. |
+| `limit` | How many chapters to return. |
+
+The reply then carries `page`: `total` (the chapters in the act, or all),
+`returned`, and `nextFromChapter` while more follow — pass it back with the
+same `act` and `limit` for the next page. The numbers stay the book's own on
+every page, so chapter 12 is chapter 12 whichever act or page shows it.
+`book_outline_get` numbers every act and entry (`number`), paged or not.
+
+```
+book_outline_get act=2 limit=5
+book_chapter_list fromChapter=21 limit=10
+```
 
 ## Scenes
 

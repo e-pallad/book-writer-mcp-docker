@@ -10,6 +10,8 @@ import {
 import { AuthorProfile } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
 import { decodeHtmlEntities } from "../utils/text";
+import { countWords } from "../utils/wordcount";
+import { briefSchema, writeReply } from "./brief";
 
 async function fetchLinkedInProfile(url: string): Promise<Partial<AuthorProfile>> {
   // Normalize the URL
@@ -252,8 +254,9 @@ export function registerAuthorTools(server: McpServer): void {
         .default("")
         .describe("Extra context to weave into the bio (e.g. 'passionate about AI', 'lives with two cats')"),
       overrideName: z.string().optional().describe("Override the name from LinkedIn"),
+      brief: briefSchema,
     },
-    async ({ linkedinUrl, additionalContext, overrideName }) => {
+    async ({ linkedinUrl, additionalContext, overrideName, brief }) => {
       const registry = getRegistry();
       if (!registry)
         throw new BookMCPError("No book project found. Run book_init first.");
@@ -291,30 +294,26 @@ export function registerAuthorTools(server: McpServer): void {
         .filter(([_, v]) => v !== undefined && v !== null)
         .map(([k]) => k);
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: `Author profile created from LinkedIn for "${profile.name}".`,
-                fetchedFromLinkedIn: fetchedFields,
-                profile,
-                generatedIntro: {
-                  full: profile.generatedIntro,
-                  short: profile.generatedIntroShort,
-                  note: "Edit these intros using book_author_update_intro, or manually update the profile with book_author_update_profile.",
-                },
-                tip: fetchedFields.length <= 2
-                  ? "LinkedIn returned limited data (common for private profiles). Use book_author_update_profile to add details manually, then book_author_regenerate_intro to regenerate the bio."
-                  : undefined,
-              },
-              null,
-              2
-            ),
+      const limited =
+        fetchedFields.length <= 2
+          ? "LinkedIn returned limited data (common for private profiles). Use book_author_update_profile to add details manually, then book_author_regenerate_intro to regenerate the bio."
+          : undefined;
+      return writeReply(
+        brief,
+        {
+          message: `Author profile created from LinkedIn for "${profile.name}".`,
+          fetchedFromLinkedIn: fetchedFields,
+          profile,
+          generatedIntro: {
+            full: profile.generatedIntro,
+            short: profile.generatedIntroShort,
+            note: "Edit these intros using book_author_update_intro, or manually update the profile with book_author_update_profile.",
           },
-        ],
-      };
+          tip: limited,
+        },
+        { id: "author", status: "created", wordCount: countWords(profile.generatedIntro ?? "") },
+        limited ? [limited] : []
+      );
     }
   );
 
@@ -349,6 +348,7 @@ export function registerAuthorTools(server: McpServer): void {
       skills: z.array(z.string()).optional().describe("Key skills"),
       publications: z.array(z.string()).optional().describe("Previous publications"),
       interests: z.array(z.string()).optional().describe("Personal interests"),
+      brief: briefSchema,
     },
     async (input) => {
       // Doubles as the tool that establishes the profile, so it upserts
@@ -377,22 +377,15 @@ export function registerAuthorTools(server: McpServer): void {
         }
       );
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: "Author profile updated.",
-                profile,
-                tip: "Run book_author_regenerate_intro to regenerate the bio with updated info.",
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return writeReply(
+        input.brief,
+        {
+          message: "Author profile updated.",
+          profile,
+          tip: "Run book_author_regenerate_intro to regenerate the bio with updated info.",
+        },
+        { id: "author", status: "updated" }
+      );
     }
   );
 
@@ -400,8 +393,8 @@ export function registerAuthorTools(server: McpServer): void {
   server.tool(
     "book_author_regenerate_intro",
     "Regenerate the author intro/bio from the current profile data. Run this after updating the profile.",
-    {},
-    async () => {
+    { brief: briefSchema },
+    async ({ brief }) => {
       const registry = getRegistry();
       if (!registry)
         throw new BookMCPError("No book project found. Run book_init first.");
@@ -413,22 +406,15 @@ export function registerAuthorTools(server: McpServer): void {
         current.updatedAt = new Date().toISOString();
       });
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: "Author intro regenerated.",
-                fullIntro: profile.generatedIntro,
-                shortIntro: profile.generatedIntroShort,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return writeReply(
+        brief,
+        {
+          message: "Author intro regenerated.",
+          fullIntro: profile.generatedIntro,
+          shortIntro: profile.generatedIntroShort,
+        },
+        { id: "author", status: "updated", wordCount: countWords(profile.generatedIntro ?? "") }
+      );
     }
   );
 
@@ -439,30 +425,24 @@ export function registerAuthorTools(server: McpServer): void {
     {
       fullIntro: z.string().optional().describe("Full author intro (for back cover / about the author page)"),
       shortIntro: z.string().optional().describe("Short author intro (for marketing / social media)"),
+      brief: briefSchema,
     },
-    async ({ fullIntro, shortIntro }) => {
+    async ({ fullIntro, shortIntro, brief }) => {
       const profile = await updateAuthorProfile((current) => {
         if (fullIntro !== undefined) current.generatedIntro = fullIntro;
         if (shortIntro !== undefined) current.generatedIntroShort = shortIntro;
         current.updatedAt = new Date().toISOString();
       });
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                message: "Author intro updated.",
-                fullIntro: profile.generatedIntro,
-                shortIntro: profile.generatedIntroShort,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return writeReply(
+        brief,
+        {
+          message: "Author intro updated.",
+          fullIntro: profile.generatedIntro,
+          shortIntro: profile.generatedIntroShort,
+        },
+        { id: "author", status: "updated", wordCount: countWords(profile.generatedIntro ?? "") }
+      );
     }
   );
 

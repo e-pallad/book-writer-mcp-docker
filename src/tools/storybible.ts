@@ -11,6 +11,7 @@ import {
 } from "../storage/bible";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare } from "../utils/text";
+import { briefSchema, writeReply } from "./brief";
 
 // Ids were the millisecond the entry was created, which collides whenever two
 // are added inside the same millisecond — easy to hit when a tool call adds a
@@ -148,6 +149,7 @@ export function registerStoryBibleTools(server: McpServer): void {
       notes: z.string().optional().default("").describe("Additional notes"),
       voiceProfile: voiceProfileSchema.optional(),
       arc: arcSchema.optional(),
+      brief: briefSchema,
     },
     async (input) => {
       const first = chapterRef(input.firstAppearance);
@@ -174,11 +176,13 @@ export function registerStoryBibleTools(server: McpServer): void {
         bible.characters.push(character);
       });
 
-      return jsonResult(
+      return writeReply(
+        input.brief,
         withWarnings({ message: `Character "${character.name}" added.`, character }, [
           first.warning,
           ...(arc?.warnings ?? []),
-        ])
+        ]),
+        { id: character.id, status: "created" }
       );
     }
   );
@@ -206,8 +210,9 @@ export function registerStoryBibleTools(server: McpServer): void {
           arc: arcSchema.optional(),
         })
         .describe("Fields to update"),
+      brief: briefSchema,
     },
-    async ({ characterId, updates }) => {
+    async ({ characterId, updates, brief }) => {
       let character!: Character;
       const first = updates.firstAppearance !== undefined ? chapterRef(updates.firstAppearance) : null;
       const arc = updates.arc ? normaliseArc(updates.arc) : null;
@@ -221,14 +226,16 @@ export function registerStoryBibleTools(server: McpServer): void {
         character = found;
       });
 
-      return jsonResult(
+      return writeReply(
+        brief,
         withWarnings({ message: `Character "${character.name}" updated.`, character }, [
           first?.warning,
           ...(arc?.warnings ?? []),
           updates.name !== undefined
             ? "Only the story bible was changed. book_character_rename also renames the character in the chapters."
             : undefined,
-        ])
+        ]),
+        { id: character.id, status: "updated" }
       );
     }
   );
@@ -273,6 +280,7 @@ export function registerStoryBibleTools(server: McpServer): void {
       description: z.string().describe("Setting description"),
       type: z.enum(["location", "world", "organization"]).describe("Setting type"),
       notes: z.string().optional().default("").describe("Additional notes"),
+      brief: briefSchema,
     },
     async (input) => {
       const setting: Setting = {
@@ -286,7 +294,11 @@ export function registerStoryBibleTools(server: McpServer): void {
         setting.id = generateId(bible.settings, "set");
         bible.settings.push(setting);
       });
-      return jsonResult({ message: `Setting "${setting.name}" added.`, setting });
+      return writeReply(
+        input.brief,
+        { message: `Setting "${setting.name}" added.`, setting },
+        { id: setting.id, status: "created" }
+      );
     }
   );
 
@@ -300,8 +312,9 @@ export function registerStoryBibleTools(server: McpServer): void {
       description: z.string().optional().describe("New description"),
       type: z.enum(["location", "world", "organization"]).optional().describe("New type"),
       notes: z.string().optional().describe("New notes"),
+      brief: briefSchema,
     },
-    async ({ settingId, ...changes }) => {
+    async ({ settingId, brief, ...changes }) => {
       const fields = Object.fromEntries(
         Object.entries(changes).filter(([, value]) => value !== undefined)
       ) as Partial<Setting>;
@@ -322,13 +335,17 @@ export function registerStoryBibleTools(server: McpServer): void {
         Object.assign(setting, fields);
       });
 
-      return jsonResult({
-        message:
-          fields.name !== undefined && fields.name !== previousName
-            ? `Setting "${previousName}" renamed to "${setting.name}" and updated.`
-            : `Setting "${setting.name}" updated.`,
-        setting,
-      });
+      return writeReply(
+        brief,
+        {
+          message:
+            fields.name !== undefined && fields.name !== previousName
+              ? `Setting "${previousName}" renamed to "${setting.name}" and updated.`
+              : `Setting "${setting.name}" updated.`,
+          setting,
+        },
+        { id: setting.id, status: "updated" }
+      );
     }
   );
 
@@ -369,8 +386,9 @@ export function registerStoryBibleTools(server: McpServer): void {
         .describe(
           "Words that show a chapter carries this thread — a name, an object, a place (e.g. ['Schuldschein', 'Kells Schulden']). The title rarely appears in prose, so these are what continuity checks look for."
         ),
+      brief: briefSchema,
     },
-    async ({ title, openedIn, summary, keywords }) => {
+    async ({ title, openedIn, summary, keywords, brief }) => {
       const opened = chapterRef(openedIn);
       const thread: PlotThread = {
         id: "",
@@ -385,8 +403,10 @@ export function registerStoryBibleTools(server: McpServer): void {
         bible.plotThreads.push(thread);
       });
 
-      return jsonResult(
-        withWarnings({ message: `Plot thread "${title}" added.`, thread }, [opened.warning])
+      return writeReply(
+        brief,
+        withWarnings({ message: `Plot thread "${title}" added.`, thread }, [opened.warning]),
+        { id: thread.id, status: thread.status }
       );
     }
   );
@@ -398,8 +418,9 @@ export function registerStoryBibleTools(server: McpServer): void {
     {
       threadId: z.string().describe("Plot thread id or title"),
       resolvedIn: z.string().describe("Chapter where the thread resolves (id or title)"),
+      brief: briefSchema,
     },
-    async ({ threadId, resolvedIn }) => {
+    async ({ threadId, resolvedIn, brief }) => {
       const resolved = chapterRef(resolvedIn);
       let thread!: PlotThread;
       await updateStoryBible((bible) => {
@@ -409,10 +430,12 @@ export function registerStoryBibleTools(server: McpServer): void {
         delete thread.abandonedReason;
       });
 
-      return jsonResult(
+      return writeReply(
+        brief,
         withWarnings({ message: `Plot thread "${thread.title}" resolved.`, thread }, [
           resolved.warning,
-        ])
+        ]),
+        { id: thread.id, status: thread.status }
       );
     }
   );
@@ -436,8 +459,9 @@ export function registerStoryBibleTools(server: McpServer): void {
         .string()
         .optional()
         .describe("Why the thread was abandoned — kept with it, so the decision is not re-litigated later"),
+      brief: briefSchema,
     },
-    async ({ threadId, title, summary, keywords, openedIn, resolvedIn, status, reason }) => {
+    async ({ threadId, title, summary, keywords, openedIn, resolvedIn, status, reason, brief }) => {
       if (
         [title, summary, keywords, openedIn, resolvedIn, status, reason].every((v) => v === undefined)
       ) {
@@ -472,14 +496,16 @@ export function registerStoryBibleTools(server: McpServer): void {
         if (thread.status === "open") delete thread.resolvedIn;
       });
 
-      return jsonResult(
+      return writeReply(
+        brief,
         withWarnings({ message: `Plot thread "${thread.title}" updated.`, thread }, [
           opened?.warning,
           resolved?.warning,
           status === undefined && reason !== undefined && thread.status !== "abandoned"
             ? "A reason is only kept for an abandoned thread."
             : undefined,
-        ])
+        ]),
+        { id: thread.id, status: thread.status }
       );
     }
   );
@@ -492,8 +518,9 @@ export function registerStoryBibleTools(server: McpServer): void {
       threadId: z.string().describe("Plot thread id or title"),
       chapterId: z.string().describe("Chapter that carries the thread (id or title)"),
       note: z.string().optional().default("").describe("How the chapter carries it"),
+      brief: briefSchema,
     },
-    async ({ threadId, chapterId, note }) => {
+    async ({ threadId, chapterId, note, brief }) => {
       const chapter = chapterRef(chapterId);
       if (chapter.warning) throw new BookMCPError(`Chapter "${chapterId}" not found.`);
 
@@ -511,7 +538,8 @@ export function registerStoryBibleTools(server: McpServer): void {
         }
       });
 
-      return jsonResult(
+      return writeReply(
+        brief,
         withWarnings(
           {
             message: `"${thread.title}" is carried in ${chapter.id}.`,
@@ -522,7 +550,8 @@ export function registerStoryBibleTools(server: McpServer): void {
               ? `The thread is ${thread.status}; the touch was recorded anyway.`
               : undefined,
           ]
-        )
+        ),
+        { id: thread.id, status: thread.status }
       );
     }
   );
@@ -559,8 +588,9 @@ export function registerStoryBibleTools(server: McpServer): void {
         .optional()
         .default("")
         .describe("How the book treats it: the question it asks, where it surfaces"),
+      brief: briefSchema,
     },
-    async ({ name, description }) => {
+    async ({ name, description, brief }) => {
       const trimmed = name.trim();
       if (!trimmed) throw new BookMCPError("A theme needs a name.");
 
@@ -580,10 +610,14 @@ export function registerStoryBibleTools(server: McpServer): void {
         bible.themes = themes;
       });
 
-      return jsonResult({
-        message: replaced ? `Theme "${trimmed}" updated.` : `Theme "${trimmed}" added.`,
-        themes,
-      });
+      return writeReply(
+        brief,
+        {
+          message: replaced ? `Theme "${trimmed}" updated.` : `Theme "${trimmed}" added.`,
+          themes,
+        },
+        { id: trimmed, status: replaced ? "updated" : "created" }
+      );
     }
   );
 
@@ -601,8 +635,9 @@ export function registerStoryBibleTools(server: McpServer): void {
     "Remove a theme",
     {
       name: z.string().describe("The theme's name"),
+      brief: briefSchema,
     },
-    async ({ name }) => {
+    async ({ name, brief }) => {
       let themes!: Theme[];
       let removed = 0;
       await updateStoryBible((bible) => {
@@ -617,7 +652,11 @@ export function registerStoryBibleTools(server: McpServer): void {
           `Theme "${name}" not found. Themes: ${themes.map((t) => t.name).join(", ") || "none"}`
         );
       }
-      return jsonResult({ message: `Theme "${name}" removed.`, themes });
+      return writeReply(
+        brief,
+        { message: `Theme "${name}" removed.`, themes },
+        { id: name, status: "deleted" }
+      );
     }
   );
 }

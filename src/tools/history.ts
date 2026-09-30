@@ -15,6 +15,7 @@ import { diffStats, unifiedDiff } from "../utils/diff";
 import { countWords } from "../utils/wordcount";
 import { requireProject, resolveChapter } from "./manuscript";
 import { saveChapterContent } from "../storage/writing-log";
+import { briefSchema, chapterBrief, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -89,8 +90,9 @@ export function registerHistoryTools(server: McpServer): void {
         .describe(
           'Snapshot timestamp to restore, exactly as book_chapter_history_list reports it (e.g. "2026-09-22T14-30-00-000Z")'
         ),
+      brief: briefSchema,
     },
-    async ({ chapterId, timestamp }) => {
+    async ({ chapterId, timestamp, brief }) => {
       let chapter!: ReturnType<typeof resolveChapter>;
       let undoTimestamp!: string;
       let restored!: string;
@@ -111,7 +113,7 @@ export function registerHistoryTools(server: McpServer): void {
 
       const { added, removed } = diffStats(current, restored);
 
-      return jsonResult({
+      return writeReply(brief, {
         message: `Chapter "${chapter.title}" reverted to the version saved at ${readableTimestamp(
           timestamp
         )}.`,
@@ -122,7 +124,7 @@ export function registerHistoryTools(server: McpServer): void {
         wordCount: chapter.wordCount,
         changes: { linesAdded: added, linesRemoved: removed },
         meta: chapter,
-      });
+      }, chapterBrief(chapter));
     }
   );
 

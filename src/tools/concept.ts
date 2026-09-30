@@ -19,6 +19,7 @@ import { assembleBook } from "../export/assemble";
 import { measureExtent } from "../export/normseite";
 import { buildDocx, layoutFor } from "../export/docx";
 import { buildExpose } from "../publishing/expose";
+import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -93,8 +94,9 @@ export function registerConceptTools(server: McpServer): void {
       uniqueSellingPoint: z.string().optional().describe("What this book has that the comparable titles do not"),
       coreThesis: z.string().optional().describe("Non-fiction: the claim the book makes"),
       readerPromise: z.string().optional().describe("Non-fiction: what the reader will know or be able to do afterwards"),
+      brief: briefSchema,
     },
-    async (input) => {
+    async ({ brief, ...input }) => {
       if (Object.values(input).every((v) => v === undefined)) {
         throw new BookMCPError("Nothing to set: pass at least one field.");
       }
@@ -114,12 +116,16 @@ export function registerConceptTools(server: McpServer): void {
         }
       });
       const advice = review(concept);
-      return jsonResult({
-        message: "Concept saved.",
-        concept,
-        missingForExpose: missingForExpose(concept),
-        ...(advice.length ? { advice } : {}),
-      });
+      return writeReply(
+        brief,
+        {
+          message: "Concept saved.",
+          concept,
+          missingForExpose: missingForExpose(concept),
+          ...(advice.length ? { advice } : {}),
+        },
+        { id: "concept", status: "updated" }
+      );
     }
   );
 

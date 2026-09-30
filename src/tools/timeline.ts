@@ -8,8 +8,10 @@ import {
   updateTimeline,
 } from "../storage/filestore";
 import { Registry, StoryBible, TimelineEvent } from "../storage/schema";
+import { resolveChapter } from "../storage/chapters";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare } from "../utils/text";
+import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -26,29 +28,11 @@ function generateEventId(existing: TimelineEvent[]): string {
   return `${base}-${suffix}`;
 }
 
-// Chapters are addressed by id or title everywhere else, so the timeline does
-// the same. Returns the canonical id.
+// Chapters are addressed by id, title or "#N" everywhere else, so the timeline
+// does the same — through the same lookup. Returns the canonical id.
 function resolveChapterId(registry: Registry | null, ref: string): string {
   if (!registry) return ref;
-  const byId = registry.chapters.find((c) => c.id === ref);
-  if (byId) return byId.id;
-
-  const matches = registry.chapters.filter(
-    (c) => normalizeForCompare(c.title) === normalizeForCompare(ref)
-  );
-  if (matches.length === 1) return matches[0].id;
-  if (matches.length > 1) {
-    throw new BookMCPError(
-      `Several chapters are titled "${ref}": ${matches
-        .map((c) => c.id)
-        .join(", ")}. Use the chapter id instead.`
-    );
-  }
-  throw new BookMCPError(
-    `Chapter "${ref}" not found. Known chapters: ${
-      registry.chapters.map((c) => `${c.id} ("${c.title}")`).join(", ") || "none"
-    }`
-  );
+  return resolveChapter(registry, ref).id;
 }
 
 // Characters likewise: an author names them, the file stores ids.
@@ -166,6 +150,7 @@ export function registerTimelineTools(server: McpServer): void {
         .default([])
         .describe("Characters involved — ids or names, resolved against the story bible"),
       notes: z.string().optional().default("").describe("Additional notes"),
+      brief: briefSchema,
     },
     async (input) => {
       const registry = getRegistry();
@@ -197,7 +182,7 @@ export function registerTimelineTools(server: McpServer): void {
         current.events.push(event);
       });
 
-      return jsonResult({
+      return writeReply(input.brief, {
         message: `Timeline event "${event.event}" logged.`,
         event: describe(event, registry, bible),
         totalEvents: timeline.events.length,
@@ -206,7 +191,7 @@ export function registerTimelineTools(server: McpServer): void {
           : {
               hint: "No sortKey given, so this event sorts after every event that has one. Add one with book_timeline_update to place it.",
             }),
-      });
+      }, { id: event.id, status: "created" });
     }
   );
 
@@ -277,6 +262,7 @@ export function registerTimelineTools(server: McpServer): void {
         .optional()
         .describe("Replace the character list — ids or names"),
       notes: z.string().optional().describe("Corrected notes"),
+      brief: briefSchema,
     },
     async (input) => {
       const registry = getRegistry();
@@ -323,10 +309,14 @@ export function registerTimelineTools(server: McpServer): void {
         updated = found;
       });
 
-      return jsonResult({
-        message: `Timeline event "${updated.event}" updated.`,
-        event: describe(updated, registry, bible),
-      });
+      return writeReply(
+        input.brief,
+        {
+          message: `Timeline event "${updated.event}" updated.`,
+          event: describe(updated, registry, bible),
+        },
+        { id: updated.id, status: "updated" }
+      );
     }
   );
 
@@ -336,8 +326,9 @@ export function registerTimelineTools(server: McpServer): void {
     "Remove an event from the timeline",
     {
       eventId: z.string().describe("Timeline event ID"),
+      brief: briefSchema,
     },
-    async ({ eventId }) => {
+    async ({ eventId, brief }) => {
       let removed!: TimelineEvent;
       const timeline = await updateTimeline((current) => {
         const index = current.events.findIndex((e) => e.id === eventId);
@@ -350,11 +341,11 @@ export function registerTimelineTools(server: McpServer): void {
         current.events.splice(index, 1);
       });
 
-      return jsonResult({
+      return writeReply(brief, {
         message: `Timeline event "${removed.event}" deleted.`,
         deleted: { id: removed.id, event: removed.event, inStoryTime: removed.inStoryTime },
         remainingEvents: timeline.events.length,
-      });
+      }, { id: removed.id, status: "deleted" });
     }
   );
 }

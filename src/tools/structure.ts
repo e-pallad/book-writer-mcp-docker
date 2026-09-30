@@ -7,6 +7,7 @@ import { projectLanguage } from "../lang";
 import { splitScenes } from "../scenes/scenes";
 import { DEFAULT_TOLERANCE, TEMPLATES, templateById } from "../structure/templates";
 import { checkArcs, checkStructure } from "../structure/check";
+import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -47,8 +48,9 @@ export function registerStructureTools(server: McpServer): void {
         .enum(TEMPLATES.map((t) => t.id) as [string, ...string[]])
         .describe("three_act, heros_journey, save_the_cat, freytag, seven_point"),
       keepBeats: z.boolean().optional().default(true),
+      brief: briefSchema,
     },
-    async ({ template, keepBeats }) => {
+    async ({ template, keepBeats, brief }) => {
       const chosen = templateById(template)!;
       let carried: string[] = [];
       let dropped: string[] = [];
@@ -61,12 +63,16 @@ export function registerStructureTools(server: McpServer): void {
         outline.structure = { template, beats: kept };
       });
       const l = lang();
-      return jsonResult({
-        message: `The book follows the ${chosen.name[l]}.`,
-        beats: chosen.beats.map((b) => ({ id: b.id, name: b.name[l], at: `${Math.round(b.position * 100)}%` })),
-        ...(carried.length ? { carriedOver: carried } : {}),
-        ...(dropped.length ? { dropped } : {}),
-      });
+      return writeReply(
+        brief,
+        {
+          message: `The book follows the ${chosen.name[l]}.`,
+          beats: chosen.beats.map((b) => ({ id: b.id, name: b.name[l], at: `${Math.round(b.position * 100)}%` })),
+          ...(carried.length ? { carriedOver: carried } : {}),
+          ...(dropped.length ? { dropped } : {}),
+        },
+        { id: template, status: "updated" }
+      );
     }
   );
 
@@ -78,8 +84,9 @@ export function registerStructureTools(server: McpServer): void {
       chapterId: z.string().describe('Chapter ID or title where the beat happens ("" to remove it)'),
       scene: z.number().optional().describe("The scene within the chapter, when the beat is that precise"),
       note: z.string().optional().describe("What happens there"),
+      brief: briefSchema,
     },
-    async ({ beat, chapterId, scene, note }) => {
+    async ({ beat, chapterId, scene, note, brief }) => {
       const registry = requireProject();
       const outline = getOutline();
       const template = outline?.structure ? templateById(outline.structure.template) : undefined;
@@ -115,11 +122,15 @@ export function registerStructureTools(server: McpServer): void {
           : rest;
       });
 
-      return jsonResult({
-        message: chapter
-          ? `${known.name[lang()]} placed in ${chapter.id} ("${chapter.title}")${scene ? `, scene ${scene}` : ""}.`
-          : `${known.name[lang()]} removed.`,
-      });
+      return writeReply(
+        brief,
+        {
+          message: chapter
+            ? `${known.name[lang()]} placed in ${chapter.id} ("${chapter.title}")${scene ? `, scene ${scene}` : ""}.`
+            : `${known.name[lang()]} removed.`,
+        },
+        { id: beat, status: chapter ? "updated" : "deleted" }
+      );
     }
   );
 

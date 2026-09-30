@@ -219,3 +219,42 @@ test("a project not set to German gets a warning", async (t) => {
   assert.match(result.warning, /project language is "en"/);
   assert.match(result.warning, /book_project_update language="de"/);
 });
+
+test("settings are a place of their own, and scene summaries count as synopses", async (t) => {
+  const dir = useTempProject();
+  t.after(() => cleanup(dir));
+  const m = (n) => require(`../dist-tsc/tools/${n}`);
+  const api = collectTools(
+    m("manuscript").registerManuscriptTools,
+    m("book-edit").registerBookEditTools,
+    m("storybible").registerStoryBibleTools,
+    m("scenes").registerSceneTools
+  );
+  await callJson(api, "book_init", { title: "Das Meer", author: "A", genre: "G", language: "de" });
+  await callJson(api, "book_chapter_create", {
+    title: "Der Kai",
+    synopsis: "Am Kai.",
+    content: "# Der Kai\n\nMara wartete.\n\n* * *\n\nKell kam spät.\n",
+  });
+  await callJson(api, "book_setting_add", {
+    name: "Hafenstrasse",
+    description: "Eine Gasse hinter dem Kai.",
+    type: "location",
+    notes: "Riecht nach Oel.",
+  });
+  await callJson(api, "book_scene_set", { chapterId: "ch-001", scene: 2, summary: "Kell kommt zurueck." });
+
+  const { locations, total } = await callJson(api, "book_text_lint", {});
+  assert.equal(locations.settings.count, 2);
+  assert.deepEqual(
+    locations.settings.examples.map((e) => [e.where, e.word]),
+    [
+      ['setting "Hafenstrasse": name', "Hafenstrasse"],
+      ['setting "Hafenstrasse": notes', "Oel"],
+    ]
+  );
+  assert.equal(locations.storyBible.count, 0, "settings are no longer counted as story bible");
+  assert.equal(locations.synopses.count, 1);
+  assert.equal(locations.synopses.examples[0].where, "summary of scene 2 in ch-001");
+  assert.equal(total, 3);
+});

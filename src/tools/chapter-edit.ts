@@ -15,6 +15,7 @@ import {
 } from "../utils/splice-paragraphs";
 import { countWords } from "../utils/wordcount";
 import { requireProject, resolveChapter } from "./manuscript";
+import { briefSchema, chapterBrief, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -158,8 +159,9 @@ export function registerChapterEditTools(server: McpServer): void {
           "The number of occurrences you expect — from a dry run or book_chapter_find. If the chapter no longer has exactly that many, nothing is written."
         ),
       dryRun: dryRunSchema,
+      brief: briefSchema,
     },
-    async ({ chapterId, oldText, newText, replaceAll, expectedCount, dryRun }) => {
+    async ({ chapterId, oldText, newText, replaceAll, expectedCount, dryRun, brief }) => {
       if (oldText === "") {
         throw new BookMCPError(
           "oldText cannot be empty — there would be nothing to find."
@@ -241,7 +243,7 @@ export function registerChapterEditTools(server: McpServer): void {
         snippets = snippetsFor(next, newOffsets, replacement.length);
       });
 
-      return jsonResult({
+      return writeReply(brief, {
         message: `Replaced ${matches === 1 ? "1 occurrence" : `${matches} occurrences`} in "${chapter.title}".`,
         chapterId: chapter.id,
         matches,
@@ -259,7 +261,7 @@ export function registerChapterEditTools(server: McpServer): void {
               note: "The text was already identical, so no version was filed.",
             }),
         ...snippets,
-      });
+      }, chapterBrief(chapter));
     }
   );
 
@@ -282,9 +284,10 @@ export function registerChapterEditTools(server: McpServer): void {
           'Put a scene break in front of the text instead of just a blank line — the one the chapter already uses, or "* * *" (default: false)'
         ),
       dryRun: dryRunSchema,
+      brief: briefSchema,
     },
-    async ({ chapterId, content, sceneBreak, dryRun }) =>
-      addParagraphs(chapterId, dryRun, (current) =>
+    async ({ chapterId, content, sceneBreak, dryRun, brief }) =>
+      addParagraphs(chapterId, dryRun, brief, (current) =>
         appendParagraphs(current, content, { sceneBreak })
       )
   );
@@ -309,8 +312,9 @@ export function registerChapterEditTools(server: McpServer): void {
         .optional()
         .describe("Insert before this paragraph (1-based). Give this or afterParagraph, not both."),
       dryRun: dryRunSchema,
+      brief: briefSchema,
     },
-    async ({ chapterId, content, afterParagraph, beforeParagraph, dryRun }) => {
+    async ({ chapterId, content, afterParagraph, beforeParagraph, dryRun, brief }) => {
       if ((afterParagraph === undefined) === (beforeParagraph === undefined)) {
         throw new BookMCPError(
           "Give exactly one of afterParagraph or beforeParagraph — book_chapter_find reports paragraph numbers."
@@ -321,7 +325,7 @@ export function registerChapterEditTools(server: McpServer): void {
           ? { afterParagraph }
           : { beforeParagraph: beforeParagraph as number };
 
-      return addParagraphs(chapterId, dryRun, (current) => {
+      return addParagraphs(chapterId, dryRun, brief, (current) => {
         const result = insertParagraphs(current, content, where);
         return {
           ...result,
@@ -373,6 +377,7 @@ function neighbours(
 async function addParagraphs(
   chapterId: string,
   dryRun: boolean,
+  brief: boolean,
   compute: (current: string) => SpliceResult & {
     sceneBreakSkipped?: string;
     extra?: Record<string, unknown>;
@@ -419,12 +424,17 @@ async function addParagraphs(
     saveChapterContent(registry, chapter, result.next);
   });
 
-  return jsonResult({
-    message: `Added ${result.paragraphsAdded} paragraph(s) to "${chapter.title}", starting at paragraph ${result.firstNewParagraph}.`,
-    ...summarise(chapter, result),
-    previousVersionSaved: snapshotTimestamp,
-    hint: "book_chapter_revert restores the text as it was before this edit.",
-  });
+  return writeReply(
+    brief,
+    {
+      message: `Added ${result.paragraphsAdded} paragraph(s) to "${chapter.title}", starting at paragraph ${result.firstNewParagraph}.`,
+      ...summarise(chapter, result),
+      previousVersionSaved: snapshotTimestamp,
+      hint: "book_chapter_revert restores the text as it was before this edit.",
+    },
+    { ...chapterBrief(chapter), firstNewParagraph: result.firstNewParagraph },
+    result.sceneBreakSkipped ? [result.sceneBreakSkipped] : []
+  );
 }
 
 /**

@@ -6,7 +6,7 @@ import { getRegistry } from "./filestore";
 import { resolveChapter } from "./chapters";
 import { Character, PlotThread, Setting, StoryBible, Theme } from "./schema";
 import { BookMCPError } from "../utils/errors";
-import { normalizeForCompare } from "../utils/text";
+import { foldUmlauts, normalizeForCompare } from "../utils/text";
 
 function known(items: { id: string }[], label: (item: never) => string): string {
   return items.map((item) => label(item as never)).join(", ") || "none";
@@ -61,16 +61,20 @@ export function resolveSetting(bible: StoryBible, ref: string): Setting {
   return setting;
 }
 
+// A title as written wins; failing that, one with umlauts and their two-letter
+// spellings treated alike ("Schluessel" for "Schlüssel"), as chapter titles.
 export function resolveThread(bible: StoryBible, ref: string): PlotThread {
-  const needle = normalizeForCompare(ref);
   const byId = bible.plotThreads.find((t) => t.id === ref);
   if (byId) return byId;
-  const byTitle = bible.plotThreads.filter((t) => normalizeForCompare(t.title) === needle);
-  if (byTitle.length === 1) return byTitle[0];
-  if (byTitle.length > 1) {
-    throw new BookMCPError(
-      `Several plot threads are titled "${ref}": ${byTitle.map((t) => t.id).join(", ")}. Use the id.`
-    );
+  for (const same of [normalizeForCompare, foldUmlauts]) {
+    const needle = same(ref.trim());
+    const byTitle = bible.plotThreads.filter((t) => same(t.title) === needle);
+    if (byTitle.length === 1) return byTitle[0];
+    if (byTitle.length > 1) {
+      throw new BookMCPError(
+        `Several plot threads are titled "${ref}": ${byTitle.map((t) => `${t.id} ("${t.title}")`).join(", ")}. Use the id.`
+      );
+    }
   }
   throw new BookMCPError(
     `Plot thread "${ref}" not found. Known threads: ${known(

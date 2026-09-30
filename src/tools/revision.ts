@@ -2,13 +2,14 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getStoryBible, getStylesheet, readChapterFile, updateRegistry, updateStylesheet } from "../storage/filestore";
 import { chaptersInOrder, requireProject, resolveChapter } from "../storage/chapters";
-import { RevisionPass } from "../storage/schema";
+import { ChapterMeta, RevisionPass } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare } from "../utils/text";
 import { languageNote, projectLanguage } from "../lang";
 import { donePasses, PASS_INFO, PASSES, passesOutOfOrder } from "../revision/passes";
 import { checkQuotes, checkStylesheet } from "../revision/stylesheet";
 import { analyzeProse } from "../prose/analyze";
+import { briefSchema, chapterBrief, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -51,10 +52,11 @@ export function registerRevisionTools(server: McpServer): void {
       chapters: z.array(z.string()).describe('Chapter ids or titles, or ["all"]'),
       done: z.boolean().optional().default(true),
       note: z.string().optional().describe("What was done"),
+      brief: briefSchema,
     },
-    async ({ pass, chapters, done, note }) => {
+    async ({ pass, chapters, done, note, brief }) => {
       const warnings: string[] = [];
-      let marked: string[] = [];
+      let marked: ChapterMeta[] = [];
       await updateRegistry((registry) => {
         const targets =
           chapters.length === 1 && chapters[0].toLowerCase() === "all"
@@ -72,18 +74,22 @@ export function registerRevisionTools(server: McpServer): void {
             warnings.push(`${chapter.id}: ${pass} marked before ${missing.join(", ")}.`);
           }
         }
-        marked = targets.map((c) => c.id);
+        marked = targets;
       });
-      return jsonResult({
-        message: `${done ? "Marked" : "Unmarked"} the ${pass} pass for ${marked.length} chapter(s).`,
-        chapters: marked,
-        ...(warnings.length
-          ? {
-              warnings,
-              hint: "A later pass before an earlier one risks polishing text the earlier pass will change.",
-            }
-          : {}),
-      });
+      return writeReply(
+        brief,
+        {
+          message: `${done ? "Marked" : "Unmarked"} the ${pass} pass for ${marked.length} chapter(s).`,
+          chapters: marked.map((c) => c.id),
+          ...(warnings.length
+            ? {
+                warnings,
+                hint: "A later pass before an earlier one risks polishing text the earlier pass will change.",
+              }
+            : {}),
+        },
+        { chapters: marked.map(chapterBrief) }
+      );
     }
   );
 
@@ -134,14 +140,18 @@ export function registerRevisionTools(server: McpServer): void {
       variants: z.array(z.string()).describe("Spellings to find and replace"),
       note: z.string().optional(),
       caseSensitive: z.boolean().optional().default(true).describe("Treat 'email' and 'Email' as different (default: true)"),
+      brief: briefSchema,
     },
-    async ({ preferred, variants, note, caseSensitive }) => {
+    async ({ preferred, variants, note, caseSensitive, brief }) => {
       const cleaned = variants.map((v) => v.trim()).filter((v) => v && v !== preferred.trim());
       if (!preferred.trim() || !cleaned.length) {
         throw new BookMCPError("Give the preferred spelling and at least one variant that differs from it.");
       }
+      let replaced = false;
       const sheet = await updateStylesheet((s) => {
+        const before = s.entries.length;
         s.entries = s.entries.filter((e) => normalizeForCompare(e.preferred) !== normalizeForCompare(preferred));
+        replaced = s.entries.length < before;
         s.entries.push({
           preferred: preferred.trim(),
           variants: cleaned,
@@ -149,7 +159,11 @@ export function registerRevisionTools(server: McpServer): void {
           ...(caseSensitive ? {} : { caseSensitive: false }),
         });
       });
-      return jsonResult({ message: `"${preferred.trim()}" added to the style sheet.`, entries: sheet.entries });
+      return writeReply(
+        brief,
+        { message: `"${preferred.trim()}" added to the style sheet.`, entries: sheet.entries },
+        { id: preferred.trim(), status: replaced ? "updated" : "created" }
+      );
     }
   );
 
@@ -163,8 +177,8 @@ export function registerRevisionTools(server: McpServer): void {
   server.tool(
     "book_stylesheet_remove",
     "Remove an entry from the style sheet",
-    { preferred: z.string() },
-    async ({ preferred }) => {
+    { preferred: z.string(), brief: briefSchema },
+    async ({ preferred, brief }) => {
       let removed = false;
       await updateStylesheet((s) => {
         const before = s.entries.length;
@@ -173,7 +187,11 @@ export function registerRevisionTools(server: McpServer): void {
         if (!removed) return false;
       });
       if (!removed) throw new BookMCPError(`"${preferred}" is not in the style sheet.`);
-      return jsonResult({ message: `"${preferred}" removed from the style sheet.` });
+      return writeReply(
+        brief,
+        { message: `"${preferred}" removed from the style sheet.` },
+        { id: preferred, status: "deleted" }
+      );
     }
   );
 

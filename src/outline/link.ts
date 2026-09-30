@@ -4,8 +4,9 @@
 // revision. These helpers tie plan entries to chapters and compare the two.
 
 import { ChapterMeta, Outline, OutlineChapter, Registry } from "../storage/schema";
-import { normalizeForCompare } from "../utils/text";
+import { foldUmlauts, normalizeForCompare } from "../utils/text";
 import { chaptersInOrder } from "../storage/chapters";
+import { BookMCPError } from "../utils/errors";
 
 /**
  * Whether a plan entry stands for a chapter: its link when it has one, its
@@ -22,6 +23,31 @@ export function entries(outline: Outline): { act?: string; entry: OutlineChapter
   return outline.acts.flatMap((act) =>
     act.chapters.map((entry) => ({ act: act.act, entry, position: ++position }))
   );
+}
+
+/**
+ * The entry an author names by its title: the title as written (case and
+ * Unicode composition aside), else with umlauts and their two-letter
+ * spellings treated alike ("Bruecke" for "Brücke") — as chapter titles are
+ * resolved. Undefined when nothing matches; refused when the folded title
+ * fits several entries.
+ */
+export function entryByTitle<T extends { entry: OutlineChapter }>(
+  candidates: T[],
+  title: string
+): T | undefined {
+  const wanted = title.trim();
+  const exact = candidates.find(({ entry }) => normalizeForCompare(entry.title) === normalizeForCompare(wanted));
+  if (exact) return exact;
+  const folded = candidates.filter(({ entry }) => foldUmlauts(entry.title) === foldUmlauts(wanted));
+  if (folded.length > 1) {
+    throw new BookMCPError(
+      `"${title}" could be any of several outline entries once umlauts and their spellings (ue/ae/oe/ss) are treated alike: ${folded
+        .map(({ entry }) => `"${entry.title}"`)
+        .join(", ")}. Use the exact title.`
+    );
+  }
+  return folded[0];
 }
 
 /** The chapter a plan entry stands for, if any. */

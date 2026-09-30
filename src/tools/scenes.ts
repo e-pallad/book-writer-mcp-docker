@@ -8,6 +8,7 @@ import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare } from "../utils/text";
 import { matchSceneMeta, sceneAnchor, splitScenes } from "../scenes/scenes";
 import { describeMeta, listScenes, SCENE_FIELDS } from "../scenes/list";
+import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -101,8 +102,9 @@ export function registerSceneTools(server: McpServer): void {
       conflict: z.string().optional().describe("What stands in the way"),
       outcome: z.string().optional().describe("How it ends for them — the turn into the next scene"),
       summary: z.string().optional().describe("What happens, in a sentence or two"),
+      brief: briefSchema,
     },
-    async ({ chapterId, scene: number, pov, ...fields }) => {
+    async ({ chapterId, scene: number, pov, brief, ...fields }) => {
       const registry = requireProject();
       const chapter = resolveChapter(registry, chapterId);
       const scenes = splitScenes(readChapterFile(chapter.filename));
@@ -154,18 +156,25 @@ export function registerSceneTools(server: McpServer): void {
         meta.updatedAt = new Date().toISOString();
       });
 
-      return jsonResult({
-        message: `Scene ${scene.index} of ${chapter.id} ("${chapter.title}") updated.`,
-        scene: {
-          scene: scene.index,
-          opening: scene.opening,
-          words: scene.words,
-          ...describeMeta(meta, bible),
+      const unknownSetting =
+        setting && !knownSetting
+          ? `"${setting}" is not a setting in the story bible; it was kept as text. book_setting_add adds it.`
+          : undefined;
+      return writeReply(
+        brief,
+        {
+          message: `Scene ${scene.index} of ${chapter.id} ("${chapter.title}") updated.`,
+          scene: {
+            scene: scene.index,
+            opening: scene.opening,
+            words: scene.words,
+            ...describeMeta(meta, bible),
+          },
+          ...(unknownSetting ? { note: unknownSetting } : {}),
         },
-        ...(setting && !knownSetting
-          ? { note: `"${setting}" is not a setting in the story bible; it was kept as text. book_setting_add adds it.` }
-          : {}),
-      });
+        { id: `${chapter.id}/scene-${scene.index}`, status: "updated", wordCount: scene.words },
+        unknownSetting ? [unknownSetting] : []
+      );
     }
   );
 }

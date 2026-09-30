@@ -10,6 +10,7 @@ import { computeProgress } from "../storage/progress";
 import { requireProject } from "../storage/chapters";
 import { countWords } from "../utils/wordcount";
 import { isIsoDate } from "../utils/date";
+import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -83,8 +84,9 @@ export function registerProjectTools(server: McpServer): void {
         .describe(
           'IANA time zone a writing day is counted in, e.g. "Europe/Berlin" (default: BOOK_TIMEZONE, else UTC)'
         ),
+      brief: briefSchema,
     },
-    async (input) => {
+    async ({ brief, ...input }) => {
       const changes = Object.fromEntries(
         Object.entries(input).filter(([, value]) => value !== undefined)
       ) as Partial<Editable>;
@@ -167,7 +169,7 @@ export function registerProjectTools(server: McpServer): void {
         notes.push(`The cover spec still names "${spec.authorName}" as the author.`);
       }
 
-      return jsonResult({
+      return writeReply(brief, {
         message: "Project details updated.",
         changed: Object.fromEntries(
           Object.keys(changes).map((key) => [
@@ -187,7 +189,11 @@ export function registerProjectTools(server: McpServer): void {
           chapterNumbering: registry.chapterNumbering ?? "none",
         },
         ...(notes.length ? { notes } : {}),
-      });
+      }, {
+        id: "project",
+        status: "updated",
+        wordCount: registry.chapters.reduce((sum, c) => sum + c.wordCount, 0),
+      }, notes);
     }
   );
 }

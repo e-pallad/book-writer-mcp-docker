@@ -11,6 +11,7 @@ import {
   rightsStatement,
   validateMetadata,
 } from "../publishing/metadata";
+import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -76,8 +77,9 @@ export function registerMetadataTools(server: McpServer): void {
         .array(z.object({ name: z.string(), role: z.enum(ROLES) }))
         .optional()
         .describe("Editors, translators, illustrators, cover designers"),
+      brief: briefSchema,
     },
-    async (input) => {
+    async ({ brief, ...input }) => {
       if (Object.values(input).every((v) => v === undefined)) {
         throw new BookMCPError("Nothing to set: pass at least one field.");
       }
@@ -145,7 +147,13 @@ export function registerMetadataTools(server: McpServer): void {
         }
       });
 
-      return jsonResult({ message: "Metadata saved.", ...report(metadata) });
+      const saved = report(metadata);
+      return writeReply(
+        brief,
+        { message: "Metadata saved.", ...saved },
+        { id: "metadata", status: "updated" },
+        saved.notes ?? []
+      );
     }
   );
 

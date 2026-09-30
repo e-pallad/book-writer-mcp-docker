@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getOutline,
   getResearch,
+  getScenes,
   getStoryBible,
   readChapterFile,
   updateOutlineIfPresent,
@@ -23,6 +24,7 @@ import { findPlaceholders } from "../utils/placeholders";
 import { researchFor } from "./research";
 import { exclusionList, findSubstituteSpellings } from "../prose/substitute-spelling";
 import { baseLanguage, projectLanguage } from "../lang";
+import { briefSchema, chapterBrief, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
@@ -84,7 +86,14 @@ function inflectedForms(text: string, name: string): Map<string, number> {
 
 const LINT_EXAMPLES = 3;
 
-type LintLocation = "chapters" | "titles" | "synopses" | "storyBible" | "outline" | "plotThreads";
+type LintLocation =
+  | "chapters"
+  | "titles"
+  | "synopses"
+  | "storyBible"
+  | "settings"
+  | "outline"
+  | "plotThreads";
 
 interface LintExample {
   word: string;
@@ -104,6 +113,7 @@ class LintReport {
     titles: { count: 0, examples: [] },
     synopses: { count: 0, examples: [] },
     storyBible: { count: 0, examples: [] },
+    settings: { count: 0, examples: [] },
     outline: { count: 0, examples: [] },
     plotThreads: { count: 0, examples: [] },
   };
@@ -202,7 +212,7 @@ export function registerBookEditTools(server: McpServer): void {
   // book_text_lint
   server.tool(
     "book_text_lint",
-    "Look for umlauts and ß spelled out as ue, ae, oe or ss (\"ueber\" for \"über\", \"Strasse\" for \"Straße\") in the chapter text, chapter titles and synopses, the story bible, the outline and the plot threads. Read-only. Replies with a count per place and at most 3 examples each — never the text. A heuristic for German: words like Feuer, Michael, Poet, muss or aussehen are not reported, and exclude takes more.",
+    "Look for umlauts and ß spelled out as ue, ae, oe or ss (\"ueber\" for \"über\", \"Strasse\" for \"Straße\") in the chapter text, chapter titles, synopses and scene summaries, the story bible, the settings (places), the outline and the plot threads. Read-only. Replies with a count per place and at most 3 examples each — never the text. A heuristic for German: words like Feuer, Michael, Poet, muss or aussehen are not reported, and exclude takes more.",
     {
       exclude: z
         .array(z.string())
@@ -215,10 +225,19 @@ export function registerBookEditTools(server: McpServer): void {
       const registry = requireProject();
       const report = new LintReport(exclusionList(exclude ?? []));
 
-      for (const chapter of chaptersInOrder(registry)) {
+      const ordered = chaptersInOrder(registry);
+      for (const chapter of ordered) {
         report.chapter(chapter, readChapterFile(chapter.filename));
         report.field("titles", chapter.title, `title of ${chapter.id}`);
         report.field("synopses", chapter.synopsis, `synopsis of ${chapter.id}`);
+      }
+      // Scene summaries of chapters still in the book, in reading order.
+      const position = new Map(ordered.map((c, i) => [c.id, i]));
+      const scenes = (getScenes()?.scenes ?? [])
+        .filter((s) => position.has(s.chapterId))
+        .sort((a, b) => position.get(a.chapterId)! - position.get(b.chapterId)! || a.indexHint - b.indexHint);
+      for (const scene of scenes) {
+        report.field("synopses", scene.summary, `summary of scene ${scene.indexHint} in ${scene.chapterId}`);
       }
       report.field("titles", registry.title, "book title");
 
@@ -250,9 +269,9 @@ export function registerBookEditTools(server: McpServer): void {
       }
       for (const setting of bible?.settings ?? []) {
         const at = (field: string) => `setting "${setting.name}": ${field}`;
-        report.field("storyBible", setting.name, at("name"));
-        report.field("storyBible", setting.description, at("description"));
-        report.field("storyBible", setting.notes, at("notes"));
+        report.field("settings", setting.name, at("name"));
+        report.field("settings", setting.description, at("description"));
+        report.field("settings", setting.notes, at("notes"));
       }
       for (const theme of bible?.themes ?? []) {
         if (typeof theme === "string") {
@@ -296,7 +315,7 @@ export function registerBookEditTools(server: McpServer): void {
             }),
         ...(total
           ? {
-              hint: "Locate each word with book_find wholeWord=true and fix it with book_replace_text (a dry run first) or book_chapter_replace_text; names and notes with the story bible, outline and plot thread tools. Words spelled this way on purpose go into exclude.",
+              hint: "Locate each word with book_find wholeWord=true and fix it with book_replace_text (a dry run first) or book_chapter_replace_text; names and notes with the story bible, setting, outline and plot thread tools, scene summaries with book_scene_set. Words spelled this way on purpose go into exclude.",
             }
           : { message: "No spelled-out umlauts or ß found." }),
       });
@@ -391,8 +410,9 @@ export function registerBookEditTools(server: McpServer): void {
         .optional()
         .default(true)
         .describe("Report what would change and write nothing (default: true)"),
+      brief: briefSchema,
     },
-    async ({ oldText, newText, chapters, wholeWord, caseSensitive, expectedCount, dryRun }) => {
+    async ({ oldText, newText, chapters, wholeWord, caseSensitive, expectedCount, dryRun, brief }) => {
       if (!oldText) throw new BookMCPError("oldText cannot be empty — there would be nothing to find.");
       const options: MatchOptions = { wholeWord, caseSensitive };
       const replacement = toNFC(newText);
@@ -451,14 +471,18 @@ export function registerBookEditTools(server: McpServer): void {
       });
 
       const total = planned.reduce((sum, p) => sum + p.matches.length, 0);
-      return jsonResult({
-        message: total
-          ? `Replaced ${total} occurrence(s) in ${planned.length} chapter(s).`
-          : "Nothing matched, so nothing was changed.",
-        replaced: total,
-        chapters: describe(planned).map((entry, i) => ({ ...entry, ...saved[i] })),
-        ...(total ? { hint: "book_chapter_revert restores any one chapter to its previous version." } : {}),
-      });
+      return writeReply(
+        brief,
+        {
+          message: total
+            ? `Replaced ${total} occurrence(s) in ${planned.length} chapter(s).`
+            : "Nothing matched, so nothing was changed.",
+          replaced: total,
+          chapters: describe(planned).map((entry, i) => ({ ...entry, ...saved[i] })),
+          ...(total ? { hint: "book_chapter_revert restores any one chapter to its previous version." } : {}),
+        },
+        { chapters: planned.map(({ chapter }) => chapterBrief(chapter)) }
+      );
     }
   );
 
@@ -487,8 +511,9 @@ export function registerBookEditTools(server: McpServer): void {
         .default(false)
         .describe("Keep the old name as an alias (default: false)"),
       dryRun: z.boolean().optional().default(false).describe("Report what would change and write nothing"),
+      brief: briefSchema,
     },
-    async ({ characterId, newName, renameParts, includeGenitive, keepOldNameAsAlias, dryRun }) => {
+    async ({ characterId, newName, renameParts, includeGenitive, keepOldNameAsAlias, dryRun, brief }) => {
       const target = newName.trim();
       if (!target) throw new BookMCPError("The new name cannot be empty.");
 
@@ -586,6 +611,7 @@ export function registerBookEditTools(server: McpServer): void {
 
       let elsewhere = 0;
       const applied: { chapterId: string; title: string; replaced: number }[] = [];
+      const changedChapters: ChapterMeta[] = [];
       await updateRegistry(async (current) => {
         // Recomputed under the lock, over the chapters as they are now: one
         // created or edited since the plan above is renamed like the rest.
@@ -596,6 +622,7 @@ export function registerBookEditTools(server: McpServer): void {
           snapshotIfChanged(chapter.id, chapter.filename, text);
           saveChapterContent(current, chapter, text);
           applied.push({ chapterId: chapter.id, title: chapter.title, replaced: count });
+          changedChapters.push(chapter);
         }
         for (const chapter of current.chapters) {
           const renamed = renameIn(chapter.synopsis, renames);
@@ -661,15 +688,28 @@ export function registerBookEditTools(server: McpServer): void {
         });
       });
 
-      return jsonResult({
-        message: `"${oldName}" is now "${target}".`,
-        ...summary,
-        chapters: applied,
-        replacedInProse: applied.reduce((sum, c) => sum + c.replaced, 0),
-        replacedElsewhere: elsewhere,
-        ...(keepOldNameAsAlias ? { alias: `"${oldName}" kept as an alias.` } : {}),
-        hint: "Each changed chapter's previous text was filed; book_chapter_revert restores it.",
-      });
+      return writeReply(
+        brief,
+        {
+          message: `"${oldName}" is now "${target}".`,
+          ...summary,
+          chapters: applied,
+          replacedInProse: applied.reduce((sum, c) => sum + c.replaced, 0),
+          replacedElsewhere: elsewhere,
+          ...(keepOldNameAsAlias ? { alias: `"${oldName}" kept as an alias.` } : {}),
+          hint: "Each changed chapter's previous text was filed; book_chapter_revert restores it.",
+        },
+        { id: character.id, status: "updated", chapters: changedChapters.map(chapterBrief) },
+        // What the rename left alone is what the author still has to do by
+        // hand, so a brief reply names it too.
+        [
+          ...(summary.skippedParts ?? []),
+          ...[...unreplaced].map(
+            ([form, entry]) =>
+              `"${form}" (${entry.count}× in ${entry.chapters.join(", ")}) was not renamed: the old name with letters attached. Check it with book_find.`
+          ),
+        ]
+      );
     }
   );
 }
