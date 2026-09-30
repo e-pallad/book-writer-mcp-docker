@@ -1,0 +1,9 @@
+# Commits that only reformat, left out of `git blame` so it shows who last
+# changed a line's content. GitHub reads this file by itself; locally:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Restore the files' original CRLF line endings
+3a18b698da55590c82e0884c8360bde3be075d87
+
+# Store every text file with LF line endings
+bcd9307cde27becb573e33c5a8637daab29cb35f

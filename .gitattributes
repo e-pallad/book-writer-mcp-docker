@@ -1,0 +1,5 @@
+# Every text file is stored with LF line endings and checked out with LF,
+# whatever the editor or tool that wrote it used. Git converts CRLF to LF when
+# a file is added, so a change never shows up as a whole file rewritten just
+# because its line endings changed. Binary files are detected and left alone.
+* text=auto eol=lf
