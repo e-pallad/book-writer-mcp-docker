@@ -1,0 +1,8 @@
+# Editors that read this write LF from the start; .gitattributes enforces it
+# on commit either way.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
