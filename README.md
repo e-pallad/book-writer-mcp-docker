@@ -1540,7 +1540,7 @@ The built-in preview renders your manuscript as a beautifully typeset book page:
 - Fixed word count badge
 - Responsive design for reading on any device
 - Updates itself only when the text has changed, keeping your scroll position (preview server)
-- Select a passage to mark it for revision (preview server)
+- Select a passage (mouse or touch) to mark it for revision (preview server)
 
 Run `book_preview` for a static HTML file, or `book_preview_server` for the live
 server described below.

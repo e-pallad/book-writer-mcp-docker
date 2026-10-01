@@ -76,7 +76,7 @@ const LIVE_CSS = `
     .live-auto { position: fixed; left: 20px; bottom: 60px; font: 11px system-ui, sans-serif; color: #888; }
     .mark-button {
       position: absolute; z-index: 20; display: none; background: #6b4c2a; color: #fff;
-      font: 13px system-ui, sans-serif; border: 0; border-radius: 6px; padding: 6px 12px;
+      font: 13px system-ui, sans-serif; border: 0; border-radius: 6px; padding: 8px 14px; touch-action: manipulation;
       cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.25);
     }
     .mark-dialog {
@@ -234,12 +234,23 @@ function liveScript(live: NonNullable<ReaderPageOptions["live"]>, language?: str
     var cur = current();
     if (!cur || dialogOpen) { button.style.display = 'none'; return; }
     button.style.display = 'block';
-    button.style.top = (window.scrollY + cur.rect.top - 40) + 'px';
+    // On touch screens the system's copy menu sits above the selection, so the
+    // button goes below it.
+    var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    button.style.top = (window.scrollY + (touch ? cur.rect.bottom + 14 : cur.rect.top - 40)) + 'px';
     button.style.left = Math.max(8, window.scrollX + cur.rect.left) + 'px';
   }
   document.addEventListener('mouseup', function () { setTimeout(place, 0); });
   document.addEventListener('keyup', function () { setTimeout(place, 0); });
-  document.addEventListener('selectionchange', function () { if (!selecting()) button.style.display = 'none'; });
+  // Touch selections are made and adjusted with handles that fire no mouse or
+  // key events, only selectionchange — which also fires while a handle is
+  // dragged, so wait until it settles.
+  var settle = null;
+  document.addEventListener('selectionchange', function () {
+    if (!selecting()) { button.style.display = 'none'; return; }
+    clearTimeout(settle);
+    settle = setTimeout(place, 350);
+  });
   // mousedown would collapse the selection before the click lands.
   button.addEventListener('mousedown', function (e) { e.preventDefault(); });
   button.addEventListener('click', function () {
