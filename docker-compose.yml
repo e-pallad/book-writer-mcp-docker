@@ -15,6 +15,30 @@ services:
     volumes:
       - ./data:/app/data
 
+  # Read-only browser view of the book (manuscript at /, dashboard at
+  # /dashboard) for the local network. Same image and data as the MCP server,
+  # but its own port, no login, and the data mounted read-only. Do NOT point the
+  # Cloudflare tunnel at this port: it has no authentication.
+  book-preview:
+    image: ghcr.io/e-pallad/book-writer-mcp-docker:${BOOK_MCP_TAG:-latest}
+    container_name: book-writer-preview
+    restart: unless-stopped
+    command: ["node", "dist/preview-server.js"]
+    environment:
+      BOOK_PROJECT_DIR: /app/data
+      PREVIEW_PORT: "${PREVIEW_PORT:-3457}"
+    ports:
+      - "${PREVIEW_PORT:-3457}:${PREVIEW_PORT:-3457}"
+    volumes:
+      - ./data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${PREVIEW_PORT:-3457}/dashboard.json"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      - book-writer-mcp
+
   # Exposes book-writer-mcp at a public HTTPS hostname without opening any
   # inbound ports. Create the tunnel and its public hostname in the
   # Cloudflare Zero Trust dashboard first (see README), then set

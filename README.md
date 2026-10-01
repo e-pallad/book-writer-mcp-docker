@@ -164,6 +164,12 @@ Plain HTTP is not accepted, so terminate TLS at the proxy or tunnel. Treat the b
 
 > **Port note:** `book_preview_server` also defaults to port 3456. If you use the preview server inside the same container, set `PREVIEW_PORT` (or `PORT`) so the two do not collide.
 
+#### Read-only browser view (local network)
+
+`docker compose up` also starts `book-preview`, a read-only view of the same book on `PREVIEW_PORT` (default 3457): the manuscript at `http://<host>:3457/` and the dashboard at `http://<host>:3457/dashboard`. Both are rebuilt from the chapter files on every request and refresh every 10 seconds. The data folder is mounted read-only, so the view cannot change the book.
+
+It has **no login**. Keep it on the local network and never point the Cloudflare tunnel (or a public reverse proxy) at this port.
+
 #### Cloudflare Tunnel (recommended for mobile)
 
 `docker-compose.yml` includes an optional `cloudflared` service that gives the container a stable public hostname without opening any inbound ports — useful since the Claude mobile app's connector config points at a fixed URL. Setup happens once, mostly in the Cloudflare dashboard:
