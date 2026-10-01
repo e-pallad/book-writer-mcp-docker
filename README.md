@@ -11,7 +11,7 @@ This is a [Model Context Protocol](https://modelcontextprotocol.io) server that 
 - **Start a book in one sentence.** Describe your idea. The AI initializes the project, creates your outline, and begins drafting chapters.
 - **Stay consistent across 100,000 words.** A story bible tracks every character, setting, and plot thread. Continuity checking catches contradictions before they become rewrites.
 - **Write in your voice.** A style guide captures your tone, POV, tense, influences, and patterns to avoid — so every chapter sounds like *you*, not generic AI.
-- **See your book take shape.** A built-in HTML preview renders your manuscript with beautiful book typography — Playfair Display headings, drop caps, justified text, ornamental dividers. The preview server auto-refreshes every 10 seconds; run `book_export_markdown` after editing chapters to update the preview.
+- **See your book take shape.** A built-in HTML preview renders your manuscript with beautiful book typography — Playfair Display headings, drop caps, justified text, ornamental dividers. The live preview server shows the draft as you write — updating only when the text actually changes — and lets you select a passage and mark it for revision, which saves it as a note on that chapter.
 - **Export to real formats.** One command compiles your manuscript to clean Markdown or a formatted `.docx` with title page, table of contents, page numbers, and configurable fonts/spacing.
 - **Design your cover.** Generate KDP-compliant cover specs with mood, color palettes, typography, and AI image prompts ready for DALL-E, Midjourney, or Stable Diffusion.
 - **Build your author profile.** Pull from LinkedIn or write manually — generates polished bios for your back cover and marketing.
@@ -164,9 +164,9 @@ Plain HTTP is not accepted, so terminate TLS at the proxy or tunnel. Treat the b
 
 > **Port note:** `book_preview_server` also defaults to port 3456. If you use the preview server inside the same container, set `PREVIEW_PORT` (or `PORT`) so the two do not collide.
 
-#### Read-only browser view (local network)
+#### Browser view (local network)
 
-`docker compose up` also starts `book-preview`, a read-only view of the same book on `PREVIEW_PORT` (default 3457): the manuscript at `http://<host>:3457/` and the dashboard at `http://<host>:3457/dashboard`. Both are rebuilt from the chapter files on every request and refresh every 10 seconds. The data folder is mounted read-only, so the view cannot change the book.
+`docker compose up` also starts `book-preview`, a view of the same book on `PREVIEW_PORT` (default 3457): the manuscript at `http://<host>:3457/` and the dashboard at `http://<host>:3457/dashboard`. Both are rebuilt from the chapter files on every request. The manuscript updates itself only when its text changes; the dashboard reloads every 10 seconds. The data folder is mounted writable for one reason: passages marked for revision in the reader are saved as notes (`.book-mcp/notes.json`). The view never edits chapters.
 
 It has **no login**. Keep it on the local network and never point the Cloudflare tunnel (or a public reverse proxy) at this port.
 
@@ -378,7 +378,7 @@ Afterwards the repo's `docker-compose.yml` still drives `auto-update.sh`, while 
 | Tool | What it does |
 |------|-------------|
 | `book_preview` | Generate a static HTML preview with book typography |
-| `book_preview_server` | Create a live preview server with 10-second auto-refresh |
+| `book_preview_server` | Create a live preview server that updates on changes and lets you mark passages for revision |
 
 ### Cover Design
 
@@ -1539,7 +1539,8 @@ The built-in preview renders your manuscript as a beautifully typeset book page:
 - Cream paper background with subtle shadow
 - Fixed word count badge
 - Responsive design for reading on any device
-- Auto-refresh every 10 seconds when using the preview server
+- Updates itself only when the text has changed, keeping your scroll position (preview server)
+- Select a passage to mark it for revision (preview server)
 
 Run `book_preview` for a static HTML file, or `book_preview_server` for the live
 server described below.
@@ -1555,6 +1556,8 @@ beside it — and serves three routes:
 | `/` | The manuscript, typeset for reading |
 | `/dashboard` | The dashboard, rebuilt on every request |
 | `/dashboard.json` | The same data, for anything that wants to consume it |
+| `/version` | A fingerprint of the manuscript text, polled by the reader |
+| `POST /api/notes` | Saves a passage marked for revision as an open note |
 
 Both pages are compiled from the chapter files **on every request**, so there is
 no export step and nothing goes stale: save a chapter and the next refresh shows
@@ -1563,10 +1566,25 @@ the page while they write wants to see the draft they are writing — `/` is for
 writing, `book_export_markdown` is for publishing, and they filter differently on
 purpose.
 
-Both refresh via a `<meta http-equiv="refresh">` rather than a script, so nothing
-the server sends carries executable code. Files written by `book_preview` and
-`book_dashboard_export` carry no refresh at all — a saved page should not try to
-reload itself.
+The reader does not reload on a timer, which would interrupt reading. Its page
+asks `/version` every `PREVIEW_REFRESH_SECONDS` whether the text has changed and
+only then updates, keeping the scroll position. While you have text selected or
+the note dialog open it holds back and shows a bar with an "update now" button;
+a checkbox switches automatic updating off. The dashboard still reloads through a
+`<meta http-equiv="refresh">`. Files written by `book_preview` and
+`book_dashboard_export` carry no refresh and no script at all — a saved page
+should not try to reload itself.
+
+#### Marking passages for revision
+
+Select text in the reader and choose **Mark for revision**, optionally with a
+comment and a kind (revise, comment, question). The passage is found again in its
+chapter file and saved as an open note from source "Vorschau", anchored to the
+exact words — or to the paragraph, when the selection contains emphasis or a line
+break. Then `book_note_list` shows what was marked, with where each passage is
+now, and `book_note_resolve` closes a note once it is dealt with. Text outside the
+chapters (front matter, part pages) cannot be marked. The endpoint accepts
+same-origin JSON only, and the project directory must be writable.
 
 ```
 PREVIEW_PORT=8080 node preview/server.js          # default 3456

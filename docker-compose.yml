@@ -15,10 +15,12 @@ services:
     volumes:
       - ./data:/app/data
 
-  # Read-only browser view of the book (manuscript at /, dashboard at
-  # /dashboard) for the local network. Same image and data as the MCP server,
-  # but its own port, no login, and the data mounted read-only. Do NOT point the
-  # Cloudflare tunnel at this port: it has no authentication.
+  # Browser view of the book (manuscript at /, dashboard at /dashboard) for the
+  # local network. Same image and data as the MCP server, but its own port and
+  # no login. The data is mounted writable only so that passages marked for
+  # revision in the reader can be saved as notes; the server writes nothing
+  # else. Do NOT point the Cloudflare tunnel at this port: it has no
+  # authentication.
   book-preview:
     image: ghcr.io/e-pallad/book-writer-mcp-docker:${BOOK_MCP_TAG:-latest}
     container_name: book-writer-preview
@@ -30,7 +32,7 @@ services:
     ports:
       - "${PREVIEW_PORT:-3457}:${PREVIEW_PORT:-3457}"
     volumes:
-      - ./data:/app/data:ro
+      - ./data:/app/data
     healthcheck:
       # "/" answers 200 even before a book exists; /dashboard does not
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${PREVIEW_PORT:-3457}/"]
