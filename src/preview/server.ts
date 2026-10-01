@@ -14,6 +14,7 @@
 //   /dashboard.json  the same data, for anything that wants to consume it
 //   /version         a fingerprint of the manuscript text; the reader polls it
 //                    and only updates when it changes
+//   GET /api/notes   the open notes with their passages, for the reader to underline
 //   POST /api/notes  records a passage marked for revision as an open note
 
 import * as crypto from "crypto";
@@ -25,7 +26,7 @@ import { collectDashboard } from "../dashboard/collect";
 import { renderDashboard } from "../dashboard/render";
 import { buildReaderPage } from "./page";
 import { compileManuscript } from "./manuscript";
-import { MarkError, markPassage } from "./mark";
+import { MarkError, markPassage, openNoteHighlights } from "./mark";
 
 const DEFAULT_PORT = 3456;
 const DEFAULT_REFRESH_SECONDS = 10;
@@ -55,6 +56,16 @@ function errorPage(title: string, message: string): string {
 
 function openNoteCount(): number {
   return (getNotes()?.notes ?? []).filter((n) => n.status === "open").length;
+}
+
+/** Changes when a note is added, resolved or re-anchored — not when the text does. */
+function notesVersion(): string {
+  const open = (getNotes()?.notes ?? []).filter((n) => n.status === "open");
+  return crypto
+    .createHash("sha1")
+    .update(open.map((n) => `${n.id}|${n.anchorText}`).join("\n"))
+    .digest("hex")
+    .slice(0, 16);
 }
 
 // Compiled from the chapter files on every request, and deliberately
@@ -92,7 +103,7 @@ function renderReader(pollSeconds: number): string {
     wordCount,
     {
       language: registry.language,
-      live: { pollSeconds, version, openNotes: openNoteCount() },
+      live: { pollSeconds, version, openNotes: openNoteCount(), notesVersion: notesVersion() },
     }
   );
 }
@@ -176,6 +187,25 @@ export function createPreviewServer(refreshSeconds = DEFAULT_REFRESH_SECONDS) {
   return http.createServer((req, res) => {
     const url = (req.url || "/").split("?")[0];
 
+    if (req.method === "GET" && url === "/api/notes") {
+      try {
+        const registry = getRegistry();
+        send(
+          res,
+          200,
+          "application/json; charset=utf-8",
+          JSON.stringify({
+            version: notesVersion(),
+            notes: registry ? openNoteHighlights(registry) : [],
+          })
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        send(res, 500, "application/json; charset=utf-8", JSON.stringify({ error: message }));
+      }
+      return;
+    }
+
     if (req.method === "POST" && url === "/api/notes") {
       void handleNotePost(req, res);
       return;
@@ -200,7 +230,7 @@ export function createPreviewServer(refreshSeconds = DEFAULT_REFRESH_SECONDS) {
           res,
           200,
           "application/json; charset=utf-8",
-          JSON.stringify({ version, openNotes: openNoteCount() })
+          JSON.stringify({ version, openNotes: openNoteCount(), notesVersion: notesVersion() })
         );
         return;
       }

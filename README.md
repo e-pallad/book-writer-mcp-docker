@@ -1541,6 +1541,7 @@ The built-in preview renders your manuscript as a beautifully typeset book page:
 - Responsive design for reading on any device
 - Updates itself only when the text has changed, keeping your scroll position (preview server)
 - Select a passage (mouse or touch) to mark it for revision (preview server)
+- Passages that already have an open note are highlighted; tap one to read the note (preview server)
 
 Run `book_preview` for a static HTML file, or `book_preview_server` for the live
 server described below.
@@ -1557,6 +1558,7 @@ beside it — and serves three routes:
 | `/dashboard` | The dashboard, rebuilt on every request |
 | `/dashboard.json` | The same data, for anything that wants to consume it |
 | `/version` | A fingerprint of the manuscript text, polled by the reader |
+| `GET /api/notes` | The open notes with their passages, which the reader highlights |
 | `POST /api/notes` | Saves a passage marked for revision as an open note |
 
 Both pages are compiled from the chapter files **on every request**, so there is
@@ -1582,7 +1584,11 @@ comment and a kind (revise, comment, question). The passage is found again in it
 chapter file and saved as an open note from source "Vorschau", anchored to the
 exact words — or to the paragraph, when the selection contains emphasis or a line
 break. Then `book_note_list` shows what was marked, with where each passage is
-now, and `book_note_resolve` closes a note once it is dealt with. Text outside the
+now, and `book_note_resolve` closes a note once it is dealt with. Every passage with an
+open note — marked in the preview or added with `book_note_add` — is highlighted in
+the reader (yellow for revisions and comments, blue for questions, green for
+praise); click or tap it to read the note. The highlight disappears when the note is
+resolved or its passage has been rewritten away. Text outside the
 chapters (front matter, part pages) cannot be marked. The endpoint accepts
 same-origin JSON only, and the project directory must be writable.
 

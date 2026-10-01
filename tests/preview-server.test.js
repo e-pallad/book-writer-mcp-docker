@@ -235,7 +235,17 @@ test("a passage marked in the preview becomes an open note on its chapter", asyn
   assert.equal(listed.notes[0].location.found, true);
   assert.match(listed.notes[0].text, /Zu glatt/);
 
-  assert.equal((await (await fetch(`${base}/version`)).json()).openNotes, 1);
+  const version = await (await fetch(`${base}/version`)).json();
+  assert.equal(version.openNotes, 1);
+  assert.ok(version.notesVersion);
+
+  // The reader can draw the note on its passage.
+  const highlights = await (await fetch(`${base}/api/notes`)).json();
+  assert.equal(highlights.version, version.notesVersion);
+  assert.equal(highlights.notes.length, 1);
+  assert.equal(highlights.notes[0].quote, "walked the quay");
+  assert.equal(highlights.notes[0].container, "Mara walked the quay.");
+  assert.match(highlights.notes[0].text, /Zu glatt/);
 
   const nowhere = await post({ selection: "text that is in no chapter" });
   assert.equal(nowhere.status, 400);
