@@ -200,6 +200,23 @@ The script only swaps images; it does not update `docker-compose.yml`. When a re
 
 To pin a version or roll back by hand, set `BOOK_MCP_TAG=sha-<commit>` in `.env` and run `docker compose up -d`. Remove it to follow `latest` again.
 
+#### Showing the stack in the TrueNAS Apps overview
+
+A stack started with plain `docker compose` runs fine but is not listed under Apps, which only shows apps registered with TrueNAS. To register it as a Custom App (TrueNAS 25.04):
+
+1. Add `COMPOSE_PROJECT_NAME=ix-book-writer-mcp` to `.env`. TrueNAS names its projects `ix-<app>`; this makes `docker compose` and `auto-update.sh` in the stack directory find the same containers, so the cron job needs no change.
+2. Make a copy of `docker-compose.yml` for TrueNAS. A Custom App's compose file does not read `.env` for `${...}` variables, so in the copy: remove `build: .`, write `env_file` and `./data` as absolute paths, and replace `${PORT}`, `${PREVIEW_PORT}` and `${BOOK_MCP_TAG}` with their values. Keep the tunnel token out of the app's stored config: add `TUNNEL_TOKEN=<same value as CLOUDFLARE_TUNNEL_TOKEN>` to `.env`, give `cloudflared` the same `env_file`, and drop `--token ${CLOUDFLARE_TUNNEL_TOKEN}` from its command.
+3. Stop the old stack by its old project name, then create the app (the app uses the same container names, so the old containers must be gone first):
+
+   ```bash
+   docker compose -p book-writer-mcp down
+   midclt call app.create "{\"custom_app\": true, \"app_name\": \"book-writer-mcp\", \"custom_compose_config_string\": $(python3 -c 'import json; print(json.dumps(open("/path/to/app-compose.yml").read()))')}"
+   ```
+
+   Expect about 30 seconds of downtime. Snapshot the dataset holding `./data` first.
+
+Afterwards the repo's `docker-compose.yml` still drives `auto-update.sh`, while TrueNAS keeps its own copy. When a release changes the compose file, update the app as well with `midclt call app.update book-writer-mcp '{"custom_compose_config_string": "..."}'`. If you rotate the tunnel token, change both `CLOUDFLARE_TUNNEL_TOKEN` and `TUNNEL_TOKEN`.
+
 ## Tools Reference
 
 ### Concept & Exposé
