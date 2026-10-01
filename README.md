@@ -194,7 +194,9 @@ docker compose pull && docker compose up -d
 
 `docker compose up --build` still builds from source for local work.
 
-To follow `main` automatically, run `deploy/truenas/auto-update.sh` from cron (as root, e.g. every 5 minutes). It pulls the image and does nothing when the running container is already on it. Otherwise it snapshots the ZFS dataset holding `./data`, recreates the container and waits for the health check. A release that doesn't become healthy is rolled back to the previous image, remembered in `.bad-image` so it isn't retried, and reported on stderr, which cron mails. The log is `/var/log/book-writer-mcp-update.log`.
+To follow `main` automatically, run `deploy/truenas/auto-update.sh` from cron (as root, e.g. every 5 minutes). It updates `book-writer-mcp`, `book-preview` and `cloudflared` (override with `SERVICES`). It pulls the image and does nothing when the running container is already on it. Otherwise it snapshots the ZFS dataset holding `./data`, recreates the container and waits for the health check. A release that doesn't become healthy is rolled back to the previous image, remembered in `.bad-image` so it isn't retried, and reported on stderr, which cron mails. The log is `/var/log/book-writer-mcp-update.log`.
+
+The script only swaps images; it does not update `docker-compose.yml`. When a release adds or changes a service (as `book-preview` did), copy the current `docker-compose.yml` (and any new `.env` keys) to the NAS once — the script then reports the missing service on stderr until you do.
 
 To pin a version or roll back by hand, set `BOOK_MCP_TAG=sha-<commit>` in `.env` and run `docker compose up -d`. Remove it to follow `latest` again.
 
