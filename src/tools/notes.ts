@@ -5,22 +5,13 @@ import { requireProject, resolveChapter } from "../storage/chapters";
 import { Note } from "../storage/schema";
 import { BookMCPError } from "../utils/errors";
 import { normalizeForCompare, splitParagraphs, toNFC } from "../utils/text";
-import { locateNote } from "../notes/anchor";
+import { locateNote, newNoteId } from "../notes/anchor";
 import { briefSchema, writeReply } from "./brief";
 
 function jsonResult(payload: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
   };
-}
-
-function newId(existing: Note[]): string {
-  const taken = new Set(existing.map((n) => n.id));
-  const base = `note-${Date.now().toString(36)}`;
-  if (!taken.has(base)) return base;
-  let suffix = 2;
-  while (taken.has(`${base}-${suffix}`)) suffix++;
-  return `${base}-${suffix}`;
 }
 
 // When a note is pinned to a paragraph rather than to words, the paragraph's
@@ -96,7 +87,7 @@ export function registerNoteTools(server: ToolServer): void {
         createdAt: new Date().toISOString(),
       };
       await updateNotes((notes) => {
-        note.id = newId(notes.notes);
+        note.id = newNoteId(notes.notes);
         notes.notes.push(note);
       });
 

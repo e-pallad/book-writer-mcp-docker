@@ -96,7 +96,7 @@ export function registerPreviewTools(server: ToolServer): void {
 
   server.tool(
     "book_preview_server",
-    "Set up a live preview server that auto-refreshes as you write. Creates a preview/ directory with a standalone Node.js server serving the manuscript at / and the dashboard at /dashboard, both rebuilt from the chapter files on every request.",
+    "Set up a live preview server that updates the reader page as you write — only when the text has actually changed — and lets you select passages to mark them for revision (they become open notes, see book_note_list). Creates a preview/ directory with a standalone Node.js server serving the manuscript at / and the dashboard at /dashboard, both rebuilt from the chapter files on every request.",
     {
       port: z
         .number()
@@ -157,8 +157,8 @@ export function registerPreviewTools(server: ToolServer): void {
           `Or: cd ${previewDir} && node server.js`,
           `Then open: http://localhost:${port}`,
           `The dashboard is at http://localhost:${port}/dashboard`,
-          "Both pages refresh every 10 seconds and are rebuilt from the chapter files on each request, so no export step is needed.",
-          `Set PREVIEW_PORT to use another port, PREVIEW_REFRESH_SECONDS to change the refresh.`,
+          "Both pages are rebuilt from the chapter files on each request, so no export step is needed. The dashboard reloads every 10 seconds; the manuscript checks every 10 seconds whether the text changed and only then updates, keeping the scroll position. Selecting text in the manuscript offers a mark-for-revision button, which records an open note on that passage.",
+          `Set PREVIEW_PORT to use another port, PREVIEW_REFRESH_SECONDS to change how often the pages check for changes.`,
         ],
       };
       if (warnings.length > 0) {
