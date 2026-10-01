@@ -6,12 +6,12 @@
 // the exact words when they appear verbatim in the source, or to the paragraph
 // when emphasis or a line break in between makes that impossible.
 
-import { getRegistry, readChapterFile, updateNotes } from "../storage/filestore";
+import { getNotes, getRegistry, readChapterFile, updateNotes } from "../storage/filestore";
 import { Note } from "../storage/schema";
 import { plainText } from "../utils/markdown";
 import { condense } from "../utils/match";
 import { splitParagraphs, toNFC } from "../utils/text";
-import { newNoteId } from "../notes/anchor";
+import { locateNote, newNoteId } from "../notes/anchor";
 
 type Registry = NonNullable<ReturnType<typeof getRegistry>>;
 
@@ -120,4 +120,49 @@ export async function markPassage(request: MarkRequest): Promise<Note> {
     notes.notes.push(note);
   });
   return note;
+}
+
+/** An open note, placed for the reader page to draw on the passage. */
+export interface NoteHighlight {
+  id: string;
+  kind: Note["kind"];
+  source: string;
+  text: string;
+  /** The passage, as the page shows it (markup removed, whitespace collapsed). */
+  quote: string;
+  /** The paragraph it is in, in the same form — finds the block among repeats. */
+  container: string;
+}
+
+const MAX_HIGHLIGHT_TEXT = 600;
+
+/** Open notes whose passage is still in its chapter. Lost anchors are left out. */
+export function openNoteHighlights(registry: Registry): NoteHighlight[] {
+  const open = (getNotes()?.notes ?? []).filter((n) => n.status === "open" && n.anchorText);
+  const chapters = new Map<string, ReturnType<typeof splitParagraphs> | null>();
+  const contents = new Map<string, string>();
+
+  const highlights: NoteHighlight[] = [];
+  for (const note of open) {
+    const chapter = registry.chapters.find((c) => c.id === note.chapterId);
+    if (!chapter) continue;
+    if (!contents.has(chapter.id)) contents.set(chapter.id, toNFC(readChapterFile(chapter.filename)));
+    const content = contents.get(chapter.id)!;
+
+    const located = locateNote(note, content);
+    if (!located.found || located.paragraph == null) continue;
+    if (!chapters.has(chapter.id)) chapters.set(chapter.id, splitParagraphs(content));
+    const paragraph = chapters.get(chapter.id)![located.paragraph - 1];
+    if (!paragraph) continue;
+
+    highlights.push({
+      id: note.id,
+      kind: note.kind,
+      source: note.source,
+      text: note.text.trim().slice(0, MAX_HIGHLIGHT_TEXT),
+      quote: flat(plainText(note.anchorText)),
+      container: flat(plainText(paragraph.text)),
+    });
+  }
+  return highlights;
 }

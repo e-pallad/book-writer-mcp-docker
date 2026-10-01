@@ -23,6 +23,8 @@ export interface ReaderPageOptions {
     /** Fingerprint of the text this page shows. */
     version: string;
     openNotes: number;
+    /** Fingerprint of the open notes, to redraw the highlights when it changes. */
+    notesVersion: string;
   };
 }
 
@@ -34,6 +36,7 @@ const LABELS = {
     comment: "Comment",
     question: "Question",
     suggestion: "Revise",
+    praise: "Praise",
     save: "Save",
     cancel: "Cancel",
     saved: "Marked.",
@@ -50,6 +53,7 @@ const LABELS = {
     comment: "Kommentar",
     question: "Frage",
     suggestion: "Überarbeiten",
+    praise: "Lob",
     save: "Speichern",
     cancel: "Abbrechen",
     saved: "Markiert.",
@@ -97,6 +101,11 @@ const LIVE_CSS = `
     .mark-row button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid #c9b99a; background: #fff; cursor: pointer; }
     .mark-row button.primary { background: #6b4c2a; border-color: #6b4c2a; color: #fff; }
     .mark-error { color: #a33; margin-top: 8px; min-height: 1em; }
+    .note-mark { background: rgba(255, 208, 80, 0.38); border-bottom: 2px solid #d9a521; color: inherit; border-radius: 2px; cursor: pointer; }
+    .note-mark.kind-question { background: rgba(120, 170, 255, 0.26); border-bottom-color: #4a7fd8; }
+    .note-mark.kind-praise { background: rgba(120, 200, 140, 0.28); border-bottom-color: #3f9a5a; }
+    .note-pop { position: absolute; z-index: 25; max-width: min(360px, 90vw); background: #fffdf8; border: 1px solid #d8d0c0; border-radius: 8px; padding: 10px 12px; font: 13px/1.45 system-ui, sans-serif; box-shadow: 0 4px 18px rgba(0,0,0,0.2); white-space: pre-wrap; }
+    .note-pop b { display: block; font-size: 11px; color: #777; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
     .mark-toast { position: fixed; bottom: 70px; right: 20px; background: #2c2c2c; color: #fff; padding: 8px 14px; border-radius: 6px; font: 13px system-ui, sans-serif; display: none; }
     .mark-toast.show { display: block; }
 `;
@@ -107,9 +116,10 @@ function liveScript(live: NonNullable<ReaderPageOptions["live"]>, language?: str
     poll: live.pollSeconds * 1000,
     version: live.version,
     openNotes: live.openNotes,
+    notesVersion: live.notesVersion,
     labels: {
       mark: L.mark, title: L.title, placeholder: L.placeholder, comment: L.comment,
-      question: L.question, suggestion: L.suggestion, save: L.save, cancel: L.cancel,
+      question: L.question, suggestion: L.suggestion, praise: L.praise, save: L.save, cancel: L.cancel,
       saved: L.saved, failed: L.failed, changed: L.changed, reload: L.reload,
       auto: L.auto, noteOne: L.openNotes(1), noteMany: L.openNotes(2),
     },
@@ -182,6 +192,7 @@ function liveScript(live: NonNullable<ReaderPageOptions["live"]>, language?: str
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (typeof d.openNotes === 'number') setNotes(d.openNotes);
+        if (d.notesVersion && d.notesVersion !== cfg.notesVersion) loadNotes();
         if (d.version !== cfg.version) changed = true;
         apply();
       })
@@ -189,6 +200,102 @@ function liveScript(live: NonNullable<ReaderPageOptions["live"]>, language?: str
   }
   setInterval(poll, cfg.poll);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+
+  // --- underline the passages that already have a note ---------------------
+  var notesById = {};
+  var pop = null;
+  function norm(s) { return s.replace(/\\s+/g, ' ').trim(); }
+  function closePop() { if (pop) { pop.remove(); pop = null; } }
+
+  function clearMarks() {
+    closePop();
+    var marks = book.querySelectorAll('mark.note-mark');
+    for (var i = 0; i < marks.length; i++) {
+      var m = marks[i], parent = m.parentNode;
+      while (m.firstChild) parent.insertBefore(m.firstChild, m);
+      parent.removeChild(m);
+      parent.normalize();
+    }
+  }
+
+  function blockFor(note, blocks) {
+    for (var i = 0; i < blocks.length; i++) if (norm(blocks[i].textContent) === note.container) return blocks[i];
+    for (var j = 0; j < blocks.length; j++) if (norm(blocks[j].textContent).indexOf(note.quote) >= 0) return blocks[j];
+    return null;
+  }
+
+  // The quote is found in the block's text with whitespace collapsed, then each
+  // stretch of it is wrapped where it sits, so emphasis inside it survives. A
+  // quote that cannot be found (markup in the source) marks the whole block.
+  function highlight(note, block) {
+    var walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null);
+    var nodes = [], n;
+    while ((n = walker.nextNode())) nodes.push(n);
+    var chars = [], map = [], lastSpace = true;
+    nodes.forEach(function (node, ni) {
+      var t = node.nodeValue;
+      for (var i = 0; i < t.length; i++) {
+        var c = t.charAt(i);
+        if (/\\s/.test(c)) { if (lastSpace) continue; c = ' '; lastSpace = true; } else lastSpace = false;
+        chars.push(c); map.push([ni, i]);
+      }
+    });
+    var s = chars.join('');
+    var from = note.quote ? s.indexOf(note.quote) : -1, to;
+    if (from < 0) { from = 0; to = s.length; } else { to = from + note.quote.length; }
+    var segs = {};
+    for (var k = from; k < to; k++) {
+      var m = map[k];
+      if (!segs[m[0]]) segs[m[0]] = { s: m[1], e: m[1] + 1 }; else segs[m[0]].e = m[1] + 1;
+    }
+    Object.keys(segs).forEach(function (key) {
+      var seg = segs[key], target = nodes[key];
+      if (seg.s > 0) target = target.splitText(seg.s);
+      if (seg.e - seg.s < target.nodeValue.length) target.splitText(seg.e - seg.s);
+      var mk = document.createElement('mark');
+      mk.className = 'note-mark kind-' + note.kind;
+      mk.setAttribute('data-note', note.id);
+      target.parentNode.insertBefore(mk, target);
+      mk.appendChild(target);
+    });
+  }
+
+  function loadNotes() {
+    fetch('/api/notes', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.notes) return;
+        cfg.notesVersion = d.version;
+        clearMarks();
+        notesById = {};
+        var blocks = book.querySelectorAll('p, h1, h2, h3');
+        d.notes.forEach(function (note) {
+          notesById[note.id] = note;
+          var block = blockFor(note, blocks);
+          if (block) highlight(note, block);
+        });
+      })
+      .catch(function () {});
+  }
+  loadNotes();
+
+  book.addEventListener('click', function (e) {
+    var mk = e.target.closest ? e.target.closest('mark.note-mark') : null;
+    if (!mk || selecting()) return;
+    var note = notesById[mk.getAttribute('data-note')];
+    if (!note) return;
+    closePop();
+    pop = el('div', 'note-pop');
+    pop.appendChild(el('b', '', note.source + ' \u00b7 ' + (L[note.kind] || note.kind)));
+    pop.appendChild(document.createTextNode(note.text));
+    var r = mk.getBoundingClientRect();
+    pop.style.top = (window.scrollY + r.bottom + 6) + 'px';
+    pop.style.left = Math.max(8, Math.min(window.scrollX + r.left, document.documentElement.clientWidth - 370)) + 'px';
+    document.body.appendChild(pop);
+    e.stopPropagation();
+  });
+  document.addEventListener('click', function (e) { if (pop && !pop.contains(e.target)) closePop(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePop(); });
 
   // --- marking passages ----------------------------------------------------
   var button = el('button', 'mark-button', L.mark);
@@ -279,6 +386,7 @@ function liveScript(live: NonNullable<ReaderPageOptions["live"]>, language?: str
         setNotes(cfg.openNotes + 1);
         window.getSelection().removeAllRanges();
         close(); flash(L.saved);
+        loadNotes();
       })
       .catch(function () { save.disabled = false; err.textContent = L.failed; });
   });
