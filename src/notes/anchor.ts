@@ -17,6 +17,16 @@ export interface NoteLocation {
   context?: string;
 }
 
+/** A fresh id that is not among `existing`. */
+export function newNoteId(existing: Pick<Note, "id">[]): string {
+  const taken = new Set(existing.map((n) => n.id));
+  const base = `note-${Date.now().toString(36)}`;
+  if (!taken.has(base)) return base;
+  let suffix = 2;
+  while (taken.has(`${base}-${suffix}`)) suffix++;
+  return `${base}-${suffix}`;
+}
+
 const CONTEXT = 40;
 
 export function locateNote(note: Pick<Note, "anchorText" | "paragraphHint">, content: string): NoteLocation {

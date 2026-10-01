@@ -13,7 +13,8 @@ function tools() {
   return collectTools(
     m("manuscript").registerManuscriptTools,
     m("storybible").registerStoryBibleTools,
-    m("preview").registerPreviewTools
+    m("preview").registerPreviewTools,
+    m("notes").registerNoteTools
   );
 }
 
@@ -179,16 +180,74 @@ test("both pages are rebuilt from the chapter files on every request", async (t)
   );
 });
 
-test("the live pages refresh themselves without shipping a script", async (t) => {
+test("the dashboard reloads on a timer; the reader only when the text changed", async (t) => {
   const { dir, api } = await seed(t);
   await callJson(api, "book_preview_server", {});
   const { base } = await boot(t, dir);
 
-  for (const route of ["/", "/dashboard"]) {
-    const html = await (await fetch(`${base}${route}`)).text();
-    assert.match(html, /<meta http-equiv="refresh"/, `${route} should carry a meta refresh`);
-    assert.ok(!/<script/i.test(html), `${route} should refresh without a script`);
-  }
+  const dashboard = await (await fetch(`${base}/dashboard`)).text();
+  assert.match(dashboard, /<meta http-equiv="refresh"/);
+  assert.ok(!/<script/i.test(dashboard));
+
+  const reader = await (await fetch(`${base}/`)).text();
+  assert.ok(!/http-equiv="refresh"/.test(reader), "the reader must not reload on a timer");
+  assert.match(reader, /fetch\('\/version'/);
+
+  const v1 = await (await fetch(`${base}/version`)).json();
+  const v2 = await (await fetch(`${base}/version`)).json();
+  assert.equal(v1.version, v2.version, "unchanged text keeps its version");
+  assert.ok(reader.includes(v1.version), "the page carries the version it shows");
+
+  const registry = JSON.parse(
+    fs.readFileSync(path.join(dir, ".book-mcp", "registry.json"), "utf-8")
+  );
+  const first = registry.chapters.find((c) => c.id === "ch-001");
+  fs.appendFileSync(path.join(dir, "chapters", first.filename), "\nMore text.\n");
+  const v3 = await (await fetch(`${base}/version`)).json();
+  assert.notEqual(v3.version, v1.version, "a change to the text changes the version");
+});
+
+test("a passage marked in the preview becomes an open note on its chapter", async (t) => {
+  const { dir, api } = await seed(t);
+  await callJson(api, "book_preview_server", {});
+  const { base } = await boot(t, dir);
+
+  const post = (body, headers = {}) =>
+    fetch(`${base}/api/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+
+  const ok = await post({
+    selection: "walked the quay",
+    container: "Mara walked the quay.",
+    text: "Zu glatt.",
+    kind: "suggestion",
+  });
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).openNotes, 1);
+
+  const listed = await callJson(api, "book_note_list", {});
+  assert.equal(listed.count, 1);
+  assert.equal(listed.notes[0].chapterId, "ch-001");
+  assert.equal(listed.notes[0].anchorText, "walked the quay");
+  assert.equal(listed.notes[0].location.found, true);
+  assert.match(listed.notes[0].text, /Zu glatt/);
+
+  assert.equal((await (await fetch(`${base}/version`)).json()).openNotes, 1);
+
+  const nowhere = await post({ selection: "text that is in no chapter" });
+  assert.equal(nowhere.status, 400);
+
+  const foreign = await post({ selection: "walked the quay" }, { Origin: "http://evil.example" });
+  assert.equal(foreign.status, 403);
+  const plain = await fetch(`${base}/api/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ selection: "walked the quay" }),
+  });
+  assert.equal(plain.status, 403);
 });
 
 test("the exported dashboard still has no refresh and no script", async (t) => {
