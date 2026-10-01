@@ -26,7 +26,7 @@ find_stack_dir() {
   done
 }
 STACK_DIR="${STACK_DIR:-$(find_stack_dir)}"
-SERVICES="${SERVICES:-book-writer-mcp cloudflared}"
+SERVICES="${SERVICES:-book-writer-mcp book-preview cloudflared}"
 SNAPSHOT_SERVICES="${SNAPSHOT_SERVICES:-book-writer-mcp}"
 # service=seconds; unlisted services are checked on every run
 CHECK_INTERVALS="${CHECK_INTERVALS:-cloudflared=21600}"
@@ -108,6 +108,13 @@ update_service() {
   if [ "$interval" -gt 0 ] && [ -f "$stamp" ] \
      && [ $(( $(date +%s) - $(cat "$stamp") )) -lt "$interval" ]; then
     return 0
+  fi
+
+  # A compose file that predates the service (not copied over yet) must not
+  # abort the run or the services after it
+  if ! compose config --services | grep -qxF "$service"; then
+    report "$service" "not in docker-compose.yml; copy the current compose file to $STACK_DIR"
+    return 1
   fi
 
   # Not `config --images`: for a service with depends_on it also lists the

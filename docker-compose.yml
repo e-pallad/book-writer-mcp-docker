@@ -32,10 +32,13 @@ services:
     volumes:
       - ./data:/app/data:ro
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${PREVIEW_PORT:-3457}/dashboard.json"]
-      interval: 60s
+      # "/" answers 200 even before a book exists; /dashboard does not
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${PREVIEW_PORT:-3457}/"]
+      interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 10s
+      start_interval: 3s
     depends_on:
       - book-writer-mcp
 
