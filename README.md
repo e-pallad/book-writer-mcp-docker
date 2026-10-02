@@ -166,7 +166,7 @@ Plain HTTP is not accepted, so terminate TLS at the proxy or tunnel. Treat the b
 
 #### Browser view (local network)
 
-`docker compose up` also starts `book-preview`, a view of the same book on `PREVIEW_PORT` (default 3457): the manuscript at `http://<host>:3457/` and the dashboard at `http://<host>:3457/dashboard`. Both are rebuilt from the chapter files on every request. The manuscript updates itself only when its text changes; the dashboard reloads every 10 seconds. The data folder is mounted writable for one reason: passages marked for revision in the reader are saved as notes (`.book-mcp/notes.json`). The view never edits chapters.
+`docker compose up` also starts `book-preview`, a view of the same book on `PREVIEW_PORT` (default 3457): the manuscript at `http://<host>:3457/` and the dashboard at `http://<host>:3457/dashboard`. Both are rebuilt from the chapter files on every request. Both pages update themselves only when their content changes. The data folder is mounted writable for one reason: passages marked for revision in the reader are saved as notes (`.book-mcp/notes.json`). The view never edits chapters.
 
 It has **no login**. Keep it on the local network and never point the Cloudflare tunnel (or a public reverse proxy) at this port.
 
@@ -1556,6 +1556,7 @@ beside it — and serves three routes:
 |---|---|
 | `/` | The manuscript, typeset for reading |
 | `/dashboard` | The dashboard, rebuilt on every request |
+| `/dashboard/version` | A fingerprint of what the dashboard shows, polled by the page |
 | `/dashboard.json` | The same data, for anything that wants to consume it |
 | `/version` | A fingerprint of the manuscript text, polled by the reader |
 | `GET /api/notes` | The open notes with their passages, which the reader highlights |
@@ -1572,8 +1573,10 @@ The reader does not reload on a timer, which would interrupt reading. Its page
 asks `/version` every `PREVIEW_REFRESH_SECONDS` whether the text has changed and
 only then updates, keeping the scroll position. While you have text selected or
 the note dialog open it holds back and shows a bar with an "update now" button;
-a checkbox switches automatic updating off. The dashboard still reloads through a
-`<meta http-equiv="refresh">`. Files written by `book_preview` and
+a checkbox switches automatic updating off. The dashboard works the same way
+through `/dashboard/version`, except that it swaps its content in place — scroll
+position and opened table views stay — and ignores what changes by itself (the
+generation time, the ever-moving end of the velocity chart). Files written by `book_preview` and
 `book_dashboard_export` carry no refresh and no script at all — a saved page
 should not try to reload itself.
 

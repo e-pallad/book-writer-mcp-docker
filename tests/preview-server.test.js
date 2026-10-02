@@ -180,14 +180,20 @@ test("both pages are rebuilt from the chapter files on every request", async (t)
   );
 });
 
-test("the dashboard reloads on a timer; the reader only when the text changed", async (t) => {
+test("neither page reloads on a timer; both update only when their content changed", async (t) => {
   const { dir, api } = await seed(t);
   await callJson(api, "book_preview_server", {});
   const { base } = await boot(t, dir);
 
   const dashboard = await (await fetch(`${base}/dashboard`)).text();
-  assert.match(dashboard, /<meta http-equiv="refresh"/);
-  assert.ok(!/<script/i.test(dashboard));
+  assert.ok(!/http-equiv="refresh"/.test(dashboard), "the dashboard must not reload on a timer");
+  assert.match(dashboard, /fetch\('\/dashboard\/version'/);
+
+  const d1 = await (await fetch(`${base}/dashboard/version`)).json();
+  await new Promise((r) => setTimeout(r, 1100));
+  const d2 = await (await fetch(`${base}/dashboard/version`)).json();
+  assert.equal(d1.version, d2.version, "the passing of time alone is not a change");
+  assert.ok(dashboard.includes(`data-version="${d1.version}"`));
 
   const reader = await (await fetch(`${base}/`)).text();
   assert.ok(!/http-equiv="refresh"/.test(reader), "the reader must not reload on a timer");
@@ -205,6 +211,8 @@ test("the dashboard reloads on a timer; the reader only when the text changed", 
   fs.appendFileSync(path.join(dir, "chapters", first.filename), "\nMore text.\n");
   const v3 = await (await fetch(`${base}/version`)).json();
   assert.notEqual(v3.version, v1.version, "a change to the text changes the version");
+  const d3 = await (await fetch(`${base}/dashboard/version`)).json();
+  assert.notEqual(d3.version, d1.version, "a change to the book changes the dashboard version");
 });
 
 test("a passage marked in the preview becomes an open note on its chapter", async (t) => {
