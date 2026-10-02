@@ -157,7 +157,7 @@ export function registerPreviewTools(server: ToolServer): void {
           `Or: cd ${previewDir} && node server.js`,
           `Then open: http://localhost:${port}`,
           `The dashboard is at http://localhost:${port}/dashboard`,
-          "Both pages are rebuilt from the chapter files on each request, so no export step is needed. The dashboard reloads every 10 seconds; the manuscript checks every 10 seconds whether the text changed and only then updates, keeping the scroll position. Selecting text in the manuscript offers a mark-for-revision button, which records an open note on that passage.",
+          "Both pages are rebuilt from the chapter files on each request, so no export step is needed. Both pages check every 10 seconds whether their content changed and only then update, keeping the scroll position. Selecting text in the manuscript offers a mark-for-revision button, which records an open note on that passage.",
           `Set PREVIEW_PORT to use another port, PREVIEW_REFRESH_SECONDS to change how often the pages check for changes.`,
         ],
       };

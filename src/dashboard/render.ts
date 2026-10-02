@@ -548,7 +548,52 @@ export interface RenderOptions {
    * off for the exported file, which stays free of anything executable.
    */
   refreshSeconds?: number;
+  /**
+   * The live server's dashboard: rather than reloading on a timer, the page
+   * asks /dashboard/version whether the numbers changed and only then swaps in
+   * the new content, in place, so scroll position and open tables survive.
+   */
+  live?: { pollSeconds: number; version: string };
 }
+
+const LIVE_SCRIPT = (pollSeconds: number) => `<script>
+(function () {
+  var wrap = function () { return document.querySelector('.wrap'); };
+  var version = document.body.getAttribute('data-version');
+  var busy = false;
+  function openTables(root) {
+    return Array.prototype.map.call(root.querySelectorAll('details'), function (d) { return d.open; });
+  }
+  function poll() {
+    if (document.hidden || busy) return;
+    var sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    busy = true;
+    fetch('/dashboard/version', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.version === version) return;
+        return fetch('/dashboard', { cache: 'no-store' })
+          .then(function (r) { return r.text(); })
+          .then(function (html) {
+            var next = new DOMParser().parseFromString(html, 'text/html');
+            var fresh = next.querySelector('.wrap'), old = wrap();
+            if (!fresh || !old) return;
+            var open = openTables(old);
+            old.replaceWith(fresh);
+            Array.prototype.forEach.call(fresh.querySelectorAll('details'), function (d, i) { d.open = !!open[i]; });
+            version = next.body.getAttribute('data-version');
+            document.body.setAttribute('data-version', version);
+            document.title = next.title;
+          });
+      })
+      .catch(function () {})
+      .then(function () { busy = false; });
+  }
+  setInterval(poll, ${pollSeconds * 1000});
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+})();
+</script>`;
 
 export function renderDashboard(
   data: DashboardData,
@@ -689,7 +734,7 @@ td.num, th[scope="col"].num { text-align: right; font-variant-numeric: tabular-n
 @media print { body { background: #fff; } .card { break-inside: avoid; } }
 </style>
 </head>
-<body>
+<body${options.live ? ` data-version="${escapeHtml(options.live.version)}"` : ""}>
 <div class="wrap">
   <header class="page">
     <h1>${escapeHtml(data.overview.title)}</h1>
@@ -709,6 +754,7 @@ td.num, th[scope="col"].num { text-align: right; font-variant-numeric: tabular-n
     ${readinessPanel(data)}
   </div>
 </div>
+${options.live ? LIVE_SCRIPT(options.live.pollSeconds) : ""}
 </body>
 </html>`;
 }

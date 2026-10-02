@@ -11,6 +11,7 @@
 // Routes:
 //   /                the manuscript, typeset for reading
 //   /dashboard       the dashboard, rebuilt on every request
+//   /dashboard/version  a fingerprint of what it shows; the page polls it
 //   /dashboard.json  the same data, for anything that wants to consume it
 //   /version         a fingerprint of the manuscript text; the reader polls it
 //                    and only updates when it changes
@@ -52,6 +53,23 @@ function errorPage(title: string, message: string): string {
     0,
     { refreshSeconds: DEFAULT_REFRESH_SECONDS }
   );
+}
+
+/**
+ * What the dashboard shows, minus what changes on its own: the generation
+ * time and the "now" end of the velocity chart move every second without the
+ * book having changed.
+ */
+function dashboardVersion(data: ReturnType<typeof collectDashboard>): string {
+  const stable = {
+    ...data,
+    generatedAt: "",
+    velocity: {
+      ...data.velocity,
+      series: data.velocity.series.map((p) => p.totalWords),
+    },
+  };
+  return crypto.createHash("sha1").update(JSON.stringify(stable)).digest("hex").slice(0, 16);
 }
 
 function openNoteCount(): number {
@@ -218,8 +236,21 @@ export function createPreviewServer(refreshSeconds = DEFAULT_REFRESH_SECONDS) {
       }
 
       if (url === "/dashboard" || url === "/dashboard.html") {
-        const html = renderDashboard(collectDashboard(), { refreshSeconds });
+        const data = collectDashboard();
+        const html = renderDashboard(data, {
+          live: { pollSeconds: refreshSeconds, version: dashboardVersion(data) },
+        });
         send(res, 200, "text/html; charset=utf-8", html);
+        return;
+      }
+
+      if (url === "/dashboard/version") {
+        send(
+          res,
+          200,
+          "application/json; charset=utf-8",
+          JSON.stringify({ version: dashboardVersion(collectDashboard()) })
+        );
         return;
       }
 
