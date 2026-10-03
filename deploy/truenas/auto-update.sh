@@ -101,7 +101,7 @@ snapshot_data() {
 # Called in an `||` context, where bash ignores `set -e`, so every step
 # that matters checks its own result.
 update_service() {
-  local service="$1" image_ref pull_out new_id container_id running_id="" old_previous=""
+  local service="$1" services_defined image_ref pull_out new_id container_id running_id="" old_previous=""
   local previous_tag="$service:previous" stamp="$STACK_DIR/.last-check-$service" interval new_ver
 
   interval="$(check_interval "$service")"
@@ -112,7 +112,10 @@ update_service() {
 
   # A compose file that predates the service (not copied over yet) must not
   # abort the run or the services after it
-  if ! compose config --services | grep -qxF "$service"; then
+  # Capture first: `grep -q` exits early, and under pipefail the SIGPIPE it
+  # causes in `compose` randomly failed this check for services that exist
+  services_defined="$(compose config --services)" || { report "$service" "docker compose config failed"; return 1; }
+  if ! grep -qxF "$service" <<< "$services_defined"; then
     report "$service" "not in docker-compose.yml; copy the current compose file to $STACK_DIR"
     return 1
   fi
