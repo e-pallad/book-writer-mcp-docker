@@ -1542,6 +1542,8 @@ The built-in preview renders your manuscript as a beautifully typeset book page:
 - Updates itself only when the text has changed, keeping your scroll position (preview server)
 - Select a passage (mouse or touch) to mark it for revision (preview server)
 - Passages that already have an open note are highlighted; tap one to read the note (preview server)
+- An editor-style ruler down the right edge marks where each chapter starts and where open notes sit (coloured by kind), and shows the part on screen; click it to jump, click a note tick to go to that passage (preview server)
+- Chapter jumping: a chapter menu with previous/next buttons at the top right, and the `[` and `]` keys to skip to the previous or next chapter (preview server)
 
 Run `book_preview` for a static HTML file, or `book_preview_server` for the live
 server described below.
