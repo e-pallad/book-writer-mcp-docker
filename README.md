@@ -1687,3 +1687,14 @@ The server has 105 tools, and an MCP client sends every tool's name, description
 
 That is about 1,900 tokens, a 93% cut; a tool's signature is paid for only when it is needed. Override the pinned set with `BOOK_MCP_PINNED=book_chapter_read,book_stats` (comma-separated; empty pins none). The default (`BOOK_MCP_TOOLS` unset) lists every tool, exactly as before. If your client already loads tools on demand (Claude Code's tool search does), you do not need this.
 
+### Choosing what to pin
+
+Every tool call is recorded in `.book-mcp/tool-usage.jsonl` (one line: time, tool, whether it was `listed` or went through the `gateway`, success, milliseconds — never arguments or manuscript text). Use the server normally for a while, then rank the tools:
+
+```bash
+node scripts/tool-usage.js                       # reads ./data/.book-mcp/tool-usage.jsonl
+node scripts/tool-usage.js path/to/tool-usage.jsonl --top 8
+```
+
+It prints calls per tool and a ready-made `BOOK_MCP_PINNED=...` line. Run it in default (full) mode to see use unbiased by the pin set, or in gateway mode to see which tools are still being fetched through `book_call`. Set `BOOK_MCP_USAGE_LOG=0` to turn the log off.
+

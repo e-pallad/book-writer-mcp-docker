@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { withUsageLog } from "./usage";
 import { CatalogEntry, ToolResult, ToolServer } from "./tools/tool-server";
 
 /** Hot-path tools advertised natively in gateway mode unless overridden. */
@@ -121,7 +122,7 @@ export function addGateway(tools: ToolServer, catalog: Map<string, CatalogEntry>
         const problems = parsed.error.issues.map((i) => `- ${i.path.join(".") || "(args)"}: ${i.message}`);
         return text(`Invalid arguments for ${tool}:\n${problems.join("\n")}\n\n${signature(entry)}`, true);
       }
-      return entry.handler(parsed.data as never);
+      return withUsageLog(tool, "gateway", entry.handler)(parsed.data as never);
     }
   );
 }

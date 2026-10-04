@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { withUsageLog } from "../usage";
 
 /** What every tool here answers with: one or more text blocks. */
 export interface ToolResult {
@@ -58,7 +59,7 @@ export function toolServer(
       const h = handler as (args: never) => ToolResult;
       options.catalog?.set(name, { name, description, schema, handler: h });
       if (!options.listed || options.listed.has(name)) {
-        register(name, { description, inputSchema: schema }, h);
+        register(name, { description, inputSchema: schema }, withUsageLog(name, "listed", h));
       }
     },
   };
