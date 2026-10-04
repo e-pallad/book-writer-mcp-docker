@@ -73,6 +73,19 @@ async function createSession(): Promise<StreamableHTTPServerTransport> {
   return transport;
 }
 
+async function handleStateless(req: Request, res: Response): Promise<void> {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+  const server = createServer();
+  res.on("close", () => {
+    void transport.close();
+    void server.close();
+  });
+  await server.connect(transport);
+  await transport.handleRequest(req, res, req.body);
+}
+
 // The transport sends "text/event-stream" without a charset. That stream is
 // always UTF-8, but clients and proxies that fall back to the historical
 // ISO-8859-1 default for text/* turn every "äüö" into mojibake, so the charset
@@ -114,7 +127,12 @@ async function handleMcpRequest(req: Request, res: Response): Promise<void> {
     let transport = sessionId ? transports[sessionId] : undefined;
     if (!transport) {
       if (sessionId) {
-        sendError(res, 404, -32001, "Session not found");
+        // Sessions live in memory, so every restart (e.g. an auto-update)
+        // orphans the ids clients still hold, and some clients, claude.ai
+        // among them, then report the server as unreachable instead of
+        // re-initializing on 404. The tools keep no per-session state, so
+        // answer from a throwaway stateless transport.
+        await handleStateless(req, res);
         return;
       }
       if (!isInitializeRequest(req.body)) {

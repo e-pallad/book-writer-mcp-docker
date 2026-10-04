@@ -232,3 +232,21 @@ test("MCP_ALLOWED_ORIGINS locks the server to the listed origins", async (t) => 
   assert.equal(denied.status, 403);
   assert.equal(denied.headers.get("access-control-allow-origin"), null);
 });
+
+test("a session id from before a restart is still served", async (t) => {
+  const server = await startHttpServer({});
+  t.after(() => server.stop());
+
+  const res = await fetch(`${server.base}/mcp`, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer test-static-token",
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      "Mcp-Session-Id": "session-from-before-the-restart",
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+  });
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /book_chapter_read/);
+});
