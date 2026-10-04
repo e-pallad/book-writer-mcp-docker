@@ -45,6 +45,10 @@ const LABELS = {
     reload: "Update now",
     auto: "Update automatically",
     openNotes: (n: number) => `${n} open ${n === 1 ? "note" : "notes"}`,
+    chapters: "Jump to chapter",
+    prevChapter: "Previous chapter ([)",
+    nextChapter: "Next chapter (])",
+    top: "Start of the book",
   },
   de: {
     mark: "Zur Überarbeitung markieren",
@@ -62,6 +66,10 @@ const LABELS = {
     reload: "Jetzt aktualisieren",
     auto: "Automatisch aktualisieren",
     openNotes: (n: number) => `${n} offene ${n === 1 ? "Notiz" : "Notizen"}`,
+    chapters: "Zum Kapitel springen",
+    prevChapter: "Voriges Kapitel ([)",
+    nextChapter: "Nächstes Kapitel (])",
+    top: "Buchanfang",
   },
 };
 
@@ -108,6 +116,19 @@ const LIVE_CSS = `
     .note-pop b { display: block; font-size: 11px; color: #777; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
     .mark-toast { position: fixed; bottom: 70px; right: 20px; background: #2c2c2c; color: #fff; padding: 8px 14px; border-radius: 6px; font: 13px system-ui, sans-serif; display: none; }
     .mark-toast.show { display: block; }
+    .word-count { right: 30px; }
+    .mark-toast { right: 30px; }
+    .ruler { position: fixed; top: 0; right: 0; bottom: 0; width: 14px; z-index: 15; background: rgba(0,0,0,0.04); border-left: 1px solid rgba(0,0,0,0.08); cursor: pointer; }
+    .ruler:hover { background: rgba(0,0,0,0.07); }
+    .ruler-thumb { position: absolute; left: 0; right: 0; min-height: 6px; background: rgba(107, 76, 42, 0.22); pointer-events: none; }
+    .ruler-chapter { position: absolute; left: 0; right: 0; height: 1px; background: #8a7a5c; opacity: 0.7; }
+    .ruler-note { position: absolute; left: 2px; right: 2px; height: 4px; margin-top: -2px; border-radius: 1px; background: #d9a521; box-shadow: 0 0 0 1px rgba(255,255,255,0.6); }
+    .ruler-note.kind-question { background: #4a7fd8; }
+    .ruler-note.kind-praise { background: #3f9a5a; }
+    .chapter-nav { position: fixed; top: 12px; right: 26px; z-index: 16; display: flex; gap: 4px; align-items: center; background: rgba(44,44,44,0.92); padding: 4px 6px; border-radius: 18px; font: 12px system-ui, sans-serif; }
+    .chapter-nav button { font: inherit; color: #1a1a1a; background: #e8dcc2; border: 0; border-radius: 12px; padding: 3px 9px; cursor: pointer; }
+    .chapter-nav select { font: inherit; max-width: 220px; padding: 3px 4px; border-radius: 10px; border: 0; background: #f5f1eb; color: #1a1a1a; }
+    @media (max-width: 700px) { .chapter-nav select { max-width: 120px; } }
 `;
 
 function liveScript(live: NonNullable<ReaderPageOptions["live"]>, language?: string): string {
@@ -122,6 +143,7 @@ function liveScript(live: NonNullable<ReaderPageOptions["live"]>, language?: str
       question: L.question, suggestion: L.suggestion, praise: L.praise, save: L.save, cancel: L.cancel,
       saved: L.saved, failed: L.failed, changed: L.changed, reload: L.reload,
       auto: L.auto, noteOne: L.openNotes(1), noteMany: L.openNotes(2),
+      chapters: L.chapters, prevChapter: L.prevChapter, nextChapter: L.nextChapter, top: L.top,
     },
   }).replace(/</g, "\\u003c");
 
@@ -274,6 +296,7 @@ function liveScript(live: NonNullable<ReaderPageOptions["live"]>, language?: str
           var block = blockFor(note, blocks);
           if (block) highlight(note, block);
         });
+        layoutRuler();
       })
       .catch(function () {});
   }
@@ -296,6 +319,122 @@ function liveScript(live: NonNullable<ReaderPageOptions["live"]>, language?: str
   });
   document.addEventListener('click', function (e) { if (pop && !pop.contains(e.target)) closePop(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePop(); });
+
+  // --- overview ruler and chapter jumping ---------------------------------
+  // A strip down the right edge, like an editor's: it maps the whole book onto
+  // the window height, ticks where each chapter starts and where each open note
+  // sits, and shows the part on screen. Clicking it jumps there; clicking a note
+  // tick jumps to that passage.
+  var ruler = el('div', 'ruler');
+  var thumb = el('div', 'ruler-thumb');
+  ruler.appendChild(thumb);
+  document.body.appendChild(ruler);
+
+  var chapters = [];
+  var heads = book.querySelectorAll('h1');
+  for (var hi = 1; hi < heads.length; hi++) {
+    var h1 = heads[hi];
+    // A part page puts its chapter's title in the h2 straight after the h1.
+    var next = h1.nextElementSibling;
+    var label = h1.textContent;
+    if (next && next.tagName === 'H2') label = h1.textContent + ' — ' + next.textContent;
+    chapters.push({ el: h1, label: label.replace(/\\s+/g, ' ').trim() });
+  }
+
+  var nav = el('div', 'chapter-nav');
+  var prevBtn = el('button', '', '‹'); prevBtn.type = 'button'; prevBtn.title = L.prevChapter;
+  var nextBtn = el('button', '', '›'); nextBtn.type = 'button'; nextBtn.title = L.nextChapter;
+  var pick = document.createElement('select');
+  pick.title = L.chapters; pick.setAttribute('aria-label', L.chapters);
+  var topOpt = document.createElement('option'); topOpt.value = '-1'; topOpt.textContent = L.top; pick.appendChild(topOpt);
+  chapters.forEach(function (c, i) {
+    var o = document.createElement('option'); o.value = String(i); o.textContent = c.label; pick.appendChild(o);
+  });
+  nav.appendChild(prevBtn); nav.appendChild(pick); nav.appendChild(nextBtn);
+  if (chapters.length) document.body.appendChild(nav);
+
+  function docTop(node) { return node.getBoundingClientRect().top + window.scrollY; }
+  function docHeight() { return Math.max(document.documentElement.scrollHeight, 1); }
+
+  // Index of the chapter being read: the last heading above the top quarter of the window.
+  function currentChapter() {
+    var line = window.scrollY + window.innerHeight * 0.25, idx = -1;
+    for (var i = 0; i < chapters.length; i++) { if (docTop(chapters[i].el) <= line) idx = i; else break; }
+    return idx;
+  }
+  function jumpTo(i) {
+    if (i < 0) { window.scrollTo(0, 0); return; }
+    if (i >= chapters.length) return;
+    window.scrollTo(0, Math.max(0, docTop(chapters[i].el) - 24));
+  }
+  function step(d) {
+    var cur = currentChapter();
+    // Mid-chapter, "previous" goes to this chapter's start before the one before it.
+    if (d < 0 && cur >= 0 && window.scrollY > docTop(chapters[cur].el) - 24 + 40) { jumpTo(cur); return; }
+    jumpTo(Math.max(-1, Math.min(chapters.length - 1, cur + d)));
+  }
+  prevBtn.addEventListener('click', function () { step(-1); });
+  nextBtn.addEventListener('click', function () { step(1); });
+  pick.addEventListener('change', function () { jumpTo(Number(pick.value)); pick.blur(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey || dialogOpen) return;
+    var t = e.target && e.target.tagName;
+    if (t === 'TEXTAREA' || t === 'INPUT' || t === 'SELECT') return;
+    if (e.key === ']') { step(1); e.preventDefault(); }
+    else if (e.key === '[') { step(-1); e.preventDefault(); }
+  });
+
+  function layoutRuler() {
+    var h = docHeight();
+    Array.prototype.slice.call(ruler.querySelectorAll('.ruler-chapter, .ruler-note')).forEach(function (n) { ruler.removeChild(n); });
+    chapters.forEach(function (c) {
+      var t = el('div', 'ruler-chapter');
+      t.style.top = (docTop(c.el) / h * 100) + '%';
+      t.title = c.label;
+      ruler.appendChild(t);
+    });
+    var seen = {};
+    var marks = book.querySelectorAll('mark.note-mark');
+    for (var i = 0; i < marks.length; i++) {
+      var id = marks[i].getAttribute('data-note');
+      if (seen[id]) continue;
+      seen[id] = true;
+      var note = notesById[id];
+      var tick = el('div', 'ruler-note kind-' + (note ? note.kind : 'comment'));
+      tick.style.top = (docTop(marks[i]) / h * 100) + '%';
+      if (note) tick.title = (note.text || note.quote || '').slice(0, 120);
+      tick.setAttribute('data-note', id);
+      ruler.appendChild(tick);
+    }
+    updateRuler();
+  }
+  function updateRuler() {
+    var h = docHeight();
+    thumb.style.top = (window.scrollY / h * 100) + '%';
+    thumb.style.height = (window.innerHeight / h * 100) + '%';
+    var cur = currentChapter();
+    if (pick.value !== String(cur)) pick.value = String(cur);
+  }
+  var rafPending = false;
+  window.addEventListener('scroll', function () {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(function () { rafPending = false; updateRuler(); });
+  }, { passive: true });
+  window.addEventListener('resize', layoutRuler);
+  window.addEventListener('load', layoutRuler);
+  if (window.ResizeObserver) new ResizeObserver(layoutRuler).observe(book);
+
+  ruler.addEventListener('click', function (e) {
+    var tick = e.target.closest ? e.target.closest('.ruler-note') : null;
+    if (tick) {
+      var mk = book.querySelector('mark.note-mark[data-note="' + tick.getAttribute('data-note') + '"]');
+      if (mk) { window.scrollTo(0, Math.max(0, docTop(mk) - window.innerHeight / 3)); return; }
+    }
+    var r = ruler.getBoundingClientRect();
+    window.scrollTo(0, (e.clientY - r.top) / r.height * docHeight() - window.innerHeight / 2);
+  });
+  layoutRuler();
 
   // --- marking passages ----------------------------------------------------
   var button = el('button', 'mark-button', L.mark);
