@@ -1689,12 +1689,12 @@ That is about 1,900 tokens, a 93% cut; a tool's signature is paid for only when 
 
 ### Choosing what to pin
 
-Every tool call is recorded in `.book-mcp/tool-usage.jsonl` (one line: time, tool, whether it was `listed` or went through the `gateway`, success, milliseconds — never arguments or manuscript text). Use the server normally for a while, then rank the tools:
+**Usage logging is on by default** — nothing to configure. Every tool call is recorded in `.book-mcp/tool-usage.jsonl` (in Docker: `./data/.book-mcp/tool-usage.jsonl`; one line: time, tool, whether it was `listed` or went through the `gateway`, success, milliseconds — never arguments or manuscript text). Use the server normally for a while, then rank the tools:
 
 ```bash
 node scripts/tool-usage.js                       # reads ./data/.book-mcp/tool-usage.jsonl
 node scripts/tool-usage.js path/to/tool-usage.jsonl --top 8
 ```
 
-It prints calls per tool and a ready-made `BOOK_MCP_PINNED=...` line. Run it in default (full) mode to see use unbiased by the pin set, or in gateway mode to see which tools are still being fetched through `book_call`. Set `BOOK_MCP_USAGE_LOG=0` to turn the log off.
+It prints calls per tool and a ready-made `BOOK_MCP_PINNED=...` line. Run it in default (full) mode to see use unbiased by the pin set, or in gateway mode to see which tools are still being fetched through `book_call`. The file stays on your machine and grows by about 100 bytes per call. Outside Docker, logging starts once the book has a `.book-mcp` folder (after `book_init`) or `BOOK_PROJECT_DIR` is set, so a stray working directory never gets one. Set `BOOK_MCP_USAGE_LOG=0` to turn the log off.
 
