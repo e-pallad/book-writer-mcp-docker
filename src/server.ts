@@ -24,18 +24,41 @@ import { registerConceptTools } from "./tools/concept";
 import { registerStructureTools } from "./tools/structure";
 import { registerRevisionTools } from "./tools/revision";
 import { registerResearchTools } from "./tools/research";
-import { toolServer } from "./tools/tool-server";
+import { CatalogEntry, toolServer } from "./tools/tool-server";
+import { DEFAULT_PINNED, addGateway } from "./gateway";
+
+// BOOK_MCP_TOOLS=gateway advertises two tools (book_tools, book_call) plus a
+// pinned few instead of all of them, cutting the tokens spent on tools/list.
+// Anything else (the default) advertises every tool, as before.
+// BOOK_MCP_PINNED overrides which tools stay directly listed in gateway mode.
+export interface ServerOptions {
+  mode?: "full" | "gateway";
+  pinned?: string[];
+}
+
+function optionsFromEnv(): ServerOptions {
+  const pinned = process.env.BOOK_MCP_PINNED;
+  return {
+    mode: process.env.BOOK_MCP_TOOLS === "gateway" ? "gateway" : "full",
+    pinned: pinned === undefined ? undefined : pinned.split(",").map((n) => n.trim()).filter(Boolean),
+  };
+}
 
 // Builds a fully configured server instance. Shared by every transport so the
 // stdio and HTTP entry points always expose the same tools.
-export function createServer(): McpServer {
+export function createServer(options: ServerOptions = optionsFromEnv()): McpServer {
   const server = new McpServer({
     name: "book-writer-mcp",
     version: "1.0.0",
   });
 
   // Register all tool modules
-  const tools = toolServer(server);
+  const gateway = options.mode === "gateway";
+  const catalog = new Map<string, CatalogEntry>();
+  const tools = toolServer(server, {
+    catalog: gateway ? catalog : undefined,
+    listed: gateway ? new Set(options.pinned ?? DEFAULT_PINNED) : undefined,
+  });
   registerManuscriptTools(tools);
   registerProjectTools(tools);
   registerConceptTools(tools);
@@ -61,6 +84,12 @@ export function createServer(): McpServer {
   registerAuthorTools(tools);
   registerPreviewTools(tools);
   registerDashboardTools(tools);
+
+  if (gateway) {
+    // Registered through a plain (all-listed) ToolServer: these are the tools
+    // the client does see.
+    addGateway(toolServer(server, { catalog }), catalog);
+  }
 
   return server;
 }
