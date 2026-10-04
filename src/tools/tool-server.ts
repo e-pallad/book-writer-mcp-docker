@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { withUsageLog } from "../usage";
 
 /** What every tool here answers with: one or more text blocks. */
 export interface ToolResult {
@@ -32,11 +33,34 @@ type RegisterTool = (
   handler: (args: never) => ToolResult | Promise<ToolResult>
 ) => unknown;
 
-export function toolServer(server: McpServer): ToolServer {
+/** A tool as the modules declared it, kept so it can be listed or called later. */
+export interface CatalogEntry {
+  name: string;
+  description: string;
+  schema: z.ZodRawShape;
+  handler: (args: never) => ToolResult | Promise<ToolResult>;
+}
+
+/**
+ * Registers tools on the server — or, for the names not in `listed`, only in
+ * `catalog`, which the gateway tools (see ../gateway.ts) search and call.
+ *
+ * `listed` undefined means every tool is registered natively, which is how the
+ * server has always behaved. A set means only those names are advertised in
+ * tools/list; the rest cost the client nothing until it asks for them.
+ */
+export function toolServer(
+  server: McpServer,
+  options: { listed?: ReadonlySet<string>; catalog?: Map<string, CatalogEntry> } = {}
+): ToolServer {
   const register = server.registerTool.bind(server) as unknown as RegisterTool;
   return {
     tool(name, description, schema, handler) {
-      register(name, { description, inputSchema: schema }, handler as (args: never) => ToolResult);
+      const h = handler as (args: never) => ToolResult;
+      options.catalog?.set(name, { name, description, schema, handler: h });
+      if (!options.listed || options.listed.has(name)) {
+        register(name, { description, inputSchema: schema }, withUsageLog(name, "listed", h));
+      }
     },
   };
 }
