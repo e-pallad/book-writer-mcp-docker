@@ -25,6 +25,8 @@ export interface FlagDetail {
   entities?: {
     characterId?: string;
     threadId?: string;
+    settingId?: string;
+    otherSettingIds?: string[];
     eventId?: string;
     otherEventId?: string;
     otherChapterId?: string;

@@ -19,6 +19,7 @@ import {
   checkThreads,
 } from "./continuity-rules";
 import { TimelineFlag } from "./timeline-continuity";
+import { SettingFlag, checkSceneSettings } from "./continuity-settings";
 import { checkLinks } from "../links/check";
 import {
   chapterFileExists,
@@ -33,7 +34,7 @@ import { listScenes } from "../scenes/list";
 
 // Each flag is prose for a person plus fields for the model (see
 // continuity-flag.ts): `code`, `chapterId`, `entities`, `evidence`, `repair`.
-type ContinuityFlag = CharacterFlag | TimelineFlag | ThreadFlag;
+type ContinuityFlag = CharacterFlag | TimelineFlag | ThreadFlag | SettingFlag;
 
 export function registerContinuityTools(server: ToolServer): void {
   server.tool(
@@ -80,12 +81,16 @@ export function registerContinuityTools(server: ToolServer): void {
       flags.push(...characterCheck.flags);
       skipped.push(...characterCheck.skipped);
 
+      const [listed] = listScenes([chapter], () => content).chapters;
+
       // Each scene against its noted point of view, in a third-person book.
       const guide = getStyleGuide();
       if (guide && classifyPov(guide.pov) === "third") {
-        const [listed] = listScenes([chapter], () => content).chapters;
         flags.push(...checkScenePov(listed.scenes, bible, chapter.id));
       }
+
+      // Each scene against the place it is noted at.
+      flags.push(...checkSceneSettings(content, listed.scenes, bible, language.rules, chapter.id));
 
       // Open plot threads left resting too long.
       flags.push(

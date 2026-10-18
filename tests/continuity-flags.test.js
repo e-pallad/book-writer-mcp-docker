@@ -165,3 +165,85 @@ test("a scene pointing at a vanished character shows up in the chapter's check",
   assert.match(checked.brokenReferencesNote, /book_links_check/);
   assert.match(checked.brokenReferencesNote, /ch-001/);
 });
+
+// ---------------------------------------------------------------------------
+// Settings
+
+async function placeProject(t) {
+  const api = await newProject(t);
+  for (const [name, type] of [["Harbour Cove", "location"], ["Old Mill", "location"], ["The Anchor", "location"]]) {
+    await callJson(api, "book_setting_add", { name, description: "d", type });
+  }
+  return api;
+}
+
+const noting = (api, scene, setting) =>
+  callJson(api, "book_scene_set", { chapterId: "ch-001", scene, setting });
+const settingFlags = async (api) =>
+  (await callJson(api, "book_continuity_check", { chapterId: "ch-001" })).flags.filter((f) => f.type === "setting");
+
+test("a scene that never names its noted setting is flagged, with the call that corrects it", async (t) => {
+  const api = await placeProject(t);
+  await chapter(api, "Eins", "# Eins\n\nRain fell on the empty street.\n");
+  await noting(api, 1, "Harbour Cove");
+
+  const flags = await settingFlags(api);
+  assert.equal(flags.length, 1, JSON.stringify(flags));
+  assert.equal(flags[0].code, "scene_setting_not_named");
+  assert.equal(flags[0].entities.sceneIndex, 1);
+  assert.deepEqual(flags[0].repair, {
+    tool: "book_scene_set",
+    args: { chapterId: "ch-001", scene: 1 },
+    choose: "setting",
+  });
+});
+
+test("a scene that names another place instead is a mismatch, quoting where", async (t) => {
+  const api = await placeProject(t);
+  await chapter(api, "Eins", "# Eins\n\nA quiet opening.\n\n* * *\n\nShe walked to the Old Mill and waited.\n");
+  await noting(api, 2, "Harbour Cove");
+
+  const flags = await settingFlags(api);
+  assert.equal(flags.length, 1, JSON.stringify(flags));
+  assert.equal(flags[0].code, "scene_setting_mismatch");
+  assert.equal(flags[0].entities.sceneIndex, 2);
+  assert.equal(flags[0].entities.otherSettingIds.length, 1);
+  assert.equal(flags[0].evidence[0].match, "Old Mill");
+  // Counted in the chapter, not in the scene: book_chapter_read finds it there.
+  const read = await callJson(api, "book_chapter_read", {
+    chapterId: "ch-001",
+    fromParagraph: flags[0].evidence[0].paragraph,
+    toParagraph: flags[0].evidence[0].paragraph,
+  });
+  assert.match(JSON.stringify(read), /Old Mill/);
+});
+
+test("naming the setting, or one word of its name, satisfies the check", async (t) => {
+  const api = await placeProject(t);
+  await chapter(
+    api,
+    "Eins",
+    "# Eins\n\nThe tide came into Harbour Cove.\n\n* * *\n\nOnly the Cove was still awake.\n\n* * *\n\nThe door of the Anchor stood open.\n"
+  );
+  await noting(api, 1, "Harbour Cove");
+  await noting(api, 2, "Harbour Cove");
+  await noting(api, 3, "The Anchor");
+  assert.deepEqual(await settingFlags(api), []);
+});
+
+test("an article does not count as naming a setting, nor a lower-case word of it", async (t) => {
+  const api = await placeProject(t);
+  await chapter(api, "Eins", "# Eins\n\nThe rain fell all night.\n\n* * *\n\nHe left the harbour behind.\n");
+  await noting(api, 1, "The Anchor");
+  await noting(api, 2, "Harbour Cove");
+
+  const flags = await settingFlags(api);
+  assert.deepEqual(flags.map((f) => f.entities.sceneIndex), [1, 2], JSON.stringify(flags));
+});
+
+test("a scene with a free-text setting, or none, is left alone", async (t) => {
+  const api = await placeProject(t);
+  await chapter(api, "Eins", "# Eins\n\nRain fell.\n\n* * *\n\nMore rain.\n");
+  await noting(api, 1, "the kitchen");
+  assert.deepEqual(await settingFlags(api), []);
+});

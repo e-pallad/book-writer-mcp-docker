@@ -775,11 +775,22 @@ every flag of `book_continuity_check` carries fields for the model that acts on 
 
 | Field | Meaning |
 |-------|---------|
-| `code` | Stable name of the rule: `trait_contradiction`, `unregistered_speaker`, `timeline_chronology`, `timeline_weekday`, `timeline_day_part`, `timeline_absent_character`, `timeline_unknown_character`, `thread_resting`, `scene_pov_not_named`, `scene_pov_unknown_character`. |
+| `code` | Stable name of the rule: `trait_contradiction`, `unregistered_speaker`, `timeline_chronology`, `timeline_weekday`, `timeline_day_part`, `timeline_absent_character`, `timeline_unknown_character`, `thread_resting`, `scene_pov_not_named`, `scene_pov_unknown_character`, `scene_setting_not_named`, `scene_setting_mismatch`. |
 | `chapterId` | The chapter the flag was raised for. |
 | `entities` | Ids of the records involved: `characterId`, `threadId`, `eventId`, `otherEventId`, `otherChapterId`, `sceneIndex`. |
 | `evidence` | The passage that triggered it: `paragraph`, `before`, `match`, `after`. `book_chapter_read fromParagraph=… toParagraph=…` reads it in full. |
 | `repair` | The tool call that fixes it, as `{tool, args, choose}`. `choose` names the argument only the author can decide — a flag never guesses whether the prose or the record is wrong. |
+
+**Settings.** A scene noted as taking place at a story-bible setting
+(`book_scene_set setting=…`) is read against its text. `scene_setting_not_named`:
+the scene never names the place — by its name, or one capitalised word of it
+(`Cove` for `Harbour Cove`; an article or a lower-case word does not count).
+`scene_setting_mismatch`: it names another setting from the bible instead, and
+`evidence` quotes where. Both are warnings: a scene may show a place without
+naming it, so the flag asks for a look, not for a fix. The check does not
+compare a setting's *description* with the prose, and it does not look for
+places the bible lacks — the trait dictionaries cover people, and nothing in
+prose reliably marks a move to a new place.
 
 The response also carries `chapterId` and, when ids in other records that point
 to or from this chapter are broken, `brokenReferences` — the checks above trust
