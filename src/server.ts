@@ -4,6 +4,7 @@ import { registerStoryBibleTools } from "./tools/storybible";
 import { registerOutlineTools } from "./tools/outline";
 import { registerStyleGuideTools } from "./tools/styleguide";
 import { registerContinuityTools } from "./tools/continuity";
+import { registerLinkTools } from "./tools/links";
 import { registerExportTools } from "./tools/export";
 import { registerEpubTools } from "./tools/epub";
 import { registerCoverTools } from "./tools/cover";
@@ -75,6 +76,7 @@ export function createServer(options: ServerOptions = optionsFromEnv()): McpServ
   registerStyleGuideTools(tools);
   registerRevisionTools(tools);
   registerContinuityTools(tools);
+  registerLinkTools(tools);
   registerExportTools(tools);
   registerEpubTools(tools);
   registerCoverTools(tools);

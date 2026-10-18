@@ -220,7 +220,7 @@ test("retitling and rewriting in one call snapshots the pre-call prose", async (
   );
 });
 
-test("deleting a chapter moves its history aside so a reused id cannot inherit it", async (t) => {
+test("deleting a chapter moves its history aside, and its id is not handed out again", async (t) => {
   const { dir, api } = await newProject(t);
   const first = await callJson(api, "book_chapter_create", {
     title: "Doomed",
@@ -237,13 +237,14 @@ test("deleting a chapter moves its history aside so a reused id cannot inherit i
     confirm: true,
   });
 
-  // Deleting the highest chapter frees its id for the next one created.
+  // Deleting the highest chapter does not free its id: the next chapter gets
+  // a new one, so nothing that pointed at the old chapter points at it.
   const second = await callJson(api, "book_chapter_create", {
     title: "Fresh Start",
     synopsis: "s",
     content: "# Fresh Start\n\nNothing to do with the last one.\n",
   });
-  assert.equal(second.chapterId, first.chapterId, "precondition: the id is reused");
+  assert.notEqual(second.chapterId, first.chapterId, "the id of a deleted chapter is not reused");
 
   const history = await callJson(api, "book_chapter_history_list", {
     chapterId: second.chapterId,

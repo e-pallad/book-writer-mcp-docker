@@ -41,6 +41,7 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 6. `book_chapter_create` or `book_chapter_update` — save it
 7. `book_timeline_add` — log what happened and when, while it is fresh
 8. `book_continuity_check` — run before marking as review/final
+   (`book_links_check` after deleting, splitting or reordering chapters)
 9. `book_style_check` — verify voice consistency; pass characterId to check
    a character's dialogue against their own voice profile as well
 
@@ -195,6 +196,11 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
   habits: they are matched literally against dialogue
 - NEVER invent character details — always check story bible first
 - Run continuity check before marking any chapter "final"
+- Act on a continuity flag through its fields, not its prose: `evidence.paragraph`
+  locates the passage (book_chapter_read fromParagraph/toParagraph), `entities`
+  names the records, `repair` is the call that fixes it. Where `repair.choose`
+  is set, ask the author — prose or record may be the wrong one. If the result
+  has `brokenReferences`, run book_links_check before trusting the flags
 - Keep synopsis fields updated as chapters evolve
 - Run book_dashboard when the author asks how the book is going, rather than
   assembling the answer from book_stats and a handful of list calls

@@ -31,6 +31,14 @@ export interface Registry {
    * evening session in Berlin would count towards tomorrow.
    */
   timezone?: string;
+  /**
+   * The number the next chapter id is made from ("ch-007" is 7). Only ever
+   * grows, so the id of a deleted chapter is never handed out again — every
+   * id the story bible, timeline, outline and notes hold stays pointing at
+   * the chapter it was made for, or at nothing. Absent in projects from before
+   * it existed; it is then derived from the chapters and the trash.
+   */
+  nextChapterNumber?: number;
   createdAt: string;
   updatedAt: string;
   chapters: ChapterMeta[];

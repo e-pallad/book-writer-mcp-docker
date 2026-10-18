@@ -14,6 +14,7 @@ import {
   writeChapterFile,
   renameChapterFile,
   trashChapterFile,
+  trashedChapterIds,
   getProjectPaths,
 } from "../storage/filestore";
 import { ChapterMeta, Registry } from "../storage/schema";
@@ -33,17 +34,28 @@ import { actSchema, chapterPage, limitSchema } from "./paging";
 
 export { resolveChapter, requireProject } from "../storage/chapters";
 
-// Ids must stay unique and stable: the story bible, the timeline and plot
-// threads all point at them. Counting chapters is not enough once a chapter in
-// the middle has been deleted (3 chapters minus one would hand out "ch-003"
-// again), so the highest id ever used decides the next one.
-function nextChapterId(registry: Registry): string {
-  let highest = 0;
-  for (const chapter of registry.chapters) {
-    const match = /^ch-(\d+)$/.exec(chapter.id);
+// Ids must stay unique, stable and never reused: the story bible, the
+// timeline, the outline, plot threads and notes all point at them. Counting
+// chapters is not enough once a chapter in the middle has been deleted, and
+// neither is the highest id still in the book — delete the last chapter and
+// the next one would take its id, quietly inheriting every reference the old
+// one left behind. So the registry keeps a counter that only grows; for a
+// project from before the counter, the chapters and the trash set its start.
+function reserveChapterNumber(registry: Registry): number {
+  let highest = Math.max((registry.nextChapterNumber ?? 1) - 1, 0);
+  const ids = [...registry.chapters.map((c) => c.id), ...trashedChapterIds().map((t) => t.id)];
+  for (const id of ids) {
+    const match = /^ch-(\d+)$/.exec(id);
     if (match) highest = Math.max(highest, parseInt(match[1], 10));
   }
-  return `ch-${String(highest + 1).padStart(3, "0")}`;
+  registry.nextChapterNumber = highest + 1;
+  return highest + 1;
+}
+
+function nextChapterId(registry: Registry): string {
+  const number = reserveChapterNumber(registry);
+  registry.nextChapterNumber = number + 1;
+  return `ch-${String(number).padStart(3, "0")}`;
 }
 
 // A title with no ASCII-representable letters leaves an empty slug, so the id
@@ -763,6 +775,9 @@ export function registerManuscriptTools(server: ToolServer): void {
         }
 
         references = findReferences(chapter);
+        // Pin the counter before the chapter leaves, so a project from before
+        // the counter keeps this id spent even if the trash is emptied later.
+        reserveChapterNumber(registry);
         // The words leave the book either way, so the day's tally shows it.
         recordWords(registry, chapter.id, countWords(readChapterFile(chapter.filename)), 0);
         trashedPath = keepFile ? null : trashChapterFile(chapter.filename);
