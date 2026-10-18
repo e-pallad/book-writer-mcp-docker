@@ -130,6 +130,10 @@ export function readChapterFile(filename: string): string {
   return fs.readFileSync(filePath, "utf-8");
 }
 
+export function chapterFileExists(filename: string): boolean {
+  return fs.existsSync(chaptersPath(filename));
+}
+
 export function writeChapterFile(filename: string, content: string): void {
   writeFileAtomic(chaptersPath(filename), content);
 }
@@ -171,6 +175,25 @@ export function trashChapterFile(filename: string): string | null {
   }
   fs.renameSync(from, to);
   return to;
+}
+
+/**
+ * The ids of chapters deleted earlier, read from what is left in the trash
+ * (the chapter file and its history both carry the id in their name). This is
+ * how a project that predates Registry.nextChapterNumber learns which ids are
+ * spent, and how a link check spots a live chapter that reuses one.
+ */
+export function trashedChapterIds(): { id: string; file: string }[] {
+  const dir = mcpPath(TRASH_DIR);
+  if (!fs.existsSync(dir)) return [];
+  const found: { id: string; file: string }[] = [];
+  for (const file of fs.readdirSync(dir)) {
+    // "<ISO stamp with : and . as dashes>-[<n>-][history-]ch-002[-title.md]"
+    const rest = file.replace(/^\d{4}-\d{2}-\d{2}T[\d-]+Z-/, "");
+    const match = /^(?:\d+-)?(?:history-)?(ch-\d+)(?=$|-|\.)/.exec(rest);
+    if (match) found.push({ id: match[1], file });
+  }
+  return found;
 }
 
 // Story Bible

@@ -41,6 +41,7 @@ Triggers: "write a book", "new chapter", "story bible", "my manuscript",
 6. `book_chapter_create` or `book_chapter_update` — save it
 7. `book_timeline_add` — log what happened and when, while it is fresh
 8. `book_continuity_check` — run before marking as review/final
+   (`book_links_check` after deleting, splitting or reordering chapters)
 9. `book_style_check` — verify voice consistency; pass characterId to check
    a character's dialogue against their own voice profile as well
 

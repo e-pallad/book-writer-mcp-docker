@@ -274,6 +274,7 @@ Afterwards the repo's `docker-compose.yml` still drives `auto-update.sh`, while 
 | `book_plot_threads_list` | List plot threads by status |
 | `book_theme_add` / `book_theme_list` / `book_theme_remove` | The book's themes |
 | `book_continuity_check` | Cross-reference a chapter against the story bible |
+| `book_links_check` | Check that every chapter, character and setting id the records hold still points at something |
 
 ### Research
 
@@ -765,7 +766,37 @@ something to say — a chapter with no logged events is never second-guessed.
 | Chronology vs chapter order | error | An event logged in this chapter happens *before* one logged in an earlier chapter. Either the chapter is a flashback or a `sortKey` is wrong. |
 | Weekday contradiction | error | The chapter names a weekday the logged event does not. |
 | Time-of-day contradiction | warning | The chapter reads as morning where the event says night. Only raised when the draft names exactly one time of day — a chapter that spans dawn to dusk legitimately mentions several. |
-| Absent character | warning | The timeline puts a character in this chapter but the prose never names them. |
+| Absent character | warning | The timeline puts a character in this chapter but the prose never names them. The name, any alias or any word of them counts ("Mara" for "Mara Vance"), as a whole word. |
+
+## Checking the Links Between Records
+
+Plot threads, characters, timeline events, scenes, notes, outline entries,
+structure beats and research entries point at chapters, characters and settings
+by id. Ids are strings in JSON, so nothing stops one from outliving what it
+pointed at. `book_links_check` reads them all and reports each one that no
+longer resolves. It writes nothing.
+
+| Issue | Severity | When |
+|-------|----------|------|
+| `missing_chapter` | error | A reference names a chapter id that was deleted. |
+| `unresolved_chapter` | warning | A reference holds text that is not a chapter id, or an id not created yet. |
+| `missing_character` / `missing_setting` | error | A relationship, timeline event or scene names someone or somewhere that is not in the story bible. |
+| `id_reused` | warning | A live chapter carries the id of one deleted earlier, so older references may point at the wrong chapter. Lists what points at it, to be read by eye. |
+| `duplicate_id`, `duplicate_order`, `missing_file`, `double_link` | error / warning | The registry, the story bible or the outline contradicts itself. |
+| `ambiguous_name` | warning | Two characters answer to the same name or alias. |
+| `lost_scene` | warning | Scene metadata whose scene was rewritten or cut. |
+
+Every issue names the record, what it points at and, where a tool repairs it,
+the call (`repair`). `repair.choose` is the argument only the author can decide;
+the check never guesses which chapter a dangling reference was meant for.
+`chapterId` narrows the report to one chapter, `severity="error"` to the broken
+ones. Run it after deleting, splitting or reordering chapters.
+
+Chapter ids are never handed out twice. The registry keeps
+`nextChapterNumber`, which only grows; for a project from before it existed the
+counter starts above every id still in the book **and** every id found in
+`.book-mcp/trash/`. Deleting the last chapter therefore no longer lets the next
+one inherit its references.
 
 ## Editing Part of a Chapter
 

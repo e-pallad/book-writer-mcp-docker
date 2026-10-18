@@ -1,6 +1,7 @@
 import { Registry, StoryBible, TimelineEvent } from "../storage/schema";
 import { normalizeForCompare, wholeWordRegExp } from "../utils/text";
 import { LanguageRules } from "../lang/types";
+import { namesOf } from "./continuity-rules";
 
 export interface TimelineFlag {
   type: "timeline";
@@ -141,11 +142,11 @@ export function checkTimeline(
         continue;
       }
 
-      const named =
-        normalizedContent.includes(normalizeForCompare(character.name)) ||
-        character.aliases.some((a) =>
-          normalizedContent.includes(normalizeForCompare(a))
-        );
+      // Any name the character answers to, as a whole word: "Mara" is named
+      // by a chapter that only says "Mara" for "Mara Vance", and an alias like
+      // "Al" is not found inside "Almost".
+      const text = content.normalize("NFC");
+      const named = namesOf(character).some((name) => wholeWordRegExp(name).test(text));
       if (!named) {
         flags.push({
           type: "timeline",
