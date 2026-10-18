@@ -768,6 +768,23 @@ something to say — a chapter with no logged events is never second-guessed.
 | Time-of-day contradiction | warning | The chapter reads as morning where the event says night. Only raised when the draft names exactly one time of day — a chapter that spans dawn to dusk legitimately mentions several. |
 | Absent character | warning | The timeline puts a character in this chapter but the prose never names them. The name, any alias or any word of them counts ("Mara" for "Mara Vance"), as a whole word. |
 
+## What a Continuity Flag Contains
+
+Besides `type`, `severity`, `description` and `suggestion` (prose, for a person),
+every flag of `book_continuity_check` carries fields for the model that acts on it:
+
+| Field | Meaning |
+|-------|---------|
+| `code` | Stable name of the rule: `trait_contradiction`, `unregistered_speaker`, `timeline_chronology`, `timeline_weekday`, `timeline_day_part`, `timeline_absent_character`, `timeline_unknown_character`, `thread_resting`, `scene_pov_not_named`, `scene_pov_unknown_character`. |
+| `chapterId` | The chapter the flag was raised for. |
+| `entities` | Ids of the records involved: `characterId`, `threadId`, `eventId`, `otherEventId`, `otherChapterId`, `sceneIndex`. |
+| `evidence` | The passage that triggered it: `paragraph`, `before`, `match`, `after`. `book_chapter_read fromParagraph=… toParagraph=…` reads it in full. |
+| `repair` | The tool call that fixes it, as `{tool, args, choose}`. `choose` names the argument only the author can decide — a flag never guesses whether the prose or the record is wrong. |
+
+The response also carries `chapterId` and, when ids in other records that point
+to or from this chapter are broken, `brokenReferences` — the checks above trust
+those ids, so `book_links_check` is the next call.
+
 ## Checking the Links Between Records
 
 Plot threads, characters, timeline events, scenes, notes, outline entries,

@@ -4,14 +4,19 @@
 import { ChapterMeta, Character, PlotThread, SceneMeta, StoryBible } from "../storage/schema";
 import { LanguageRules } from "../lang/types";
 import { escapeRegExp, normalizeForCompare, wholeWordRegExp } from "../utils/text";
-import { speakerTagsIn } from "./voice";
+import { snippetAt } from "../utils/match";
+import { speakerTagMatches } from "./voice";
+import { FlagDetail } from "./continuity-flag";
 
-export interface CharacterFlag {
+export interface CharacterFlag extends FlagDetail {
   type: "character";
   severity: "error" | "warning";
   description: string;
   suggestion: string;
 }
+
+// Context either side of a passage quoted as evidence.
+const EVIDENCE_CONTEXT = 60;
 
 export const LANGUAGE_DEPENDENT_CONTINUITY_CHECKS = [
   "traitContradictions",
@@ -65,7 +70,8 @@ function traitKeys(trait: string, rules: LanguageRules): string[] {
 export function checkCharacters(
   content: string,
   bible: StoryBible,
-  rules: LanguageRules | null
+  rules: LanguageRules | null,
+  chapterId: string
 ): { flags: CharacterFlag[]; skipped: string[] } {
   if (!rules) return { flags: [], skipped: [...LANGUAGE_DEPENDENT_CONTINUITY_CHECKS] };
 
@@ -82,13 +88,17 @@ export function checkCharacters(
     for (const trait of character.traits) {
       for (const key of traitKeys(trait, rules)) {
         for (const opposite of rules.traitOpposites[key]) {
-          const near = positions(text, oppositePattern(opposite, rules)).some((at) =>
+          const hit = positions(text, oppositePattern(opposite, rules)).find((at) =>
             namePositions.some((nameAt) => Math.abs(nameAt - at) < NEARBY)
           );
-          if (near) {
+          if (hit !== undefined) {
             flags.push({
               type: "character",
               severity: "error",
+              code: "trait_contradiction",
+              chapterId,
+              entities: { characterId: character.id },
+              evidence: [snippetAt(text, hit, opposite.length, EVIDENCE_CONTEXT)],
               description: `Character "${character.name}" is described as "${trait}" in story bible but "${opposite}" appears near their name in this chapter.`,
               suggestion: `Verify the description of ${character.name} matches the story bible trait "${trait}".`,
             });
@@ -103,13 +113,17 @@ export function checkCharacters(
     bible.characters.flatMap((c) => namesOf(c).map((n) => normalizeForCompare(n)))
   );
   const reported = new Set<string>();
-  for (const name of speakerTagsIn(text, rules)) {
+  for (const { at, name } of speakerTagMatches(text, rules)) {
     const key = normalizeForCompare(name);
     if (known.has(key) || reported.has(key) || name.length <= 2) continue;
     reported.add(key);
     flags.push({
       type: "character",
       severity: "warning",
+      code: "unregistered_speaker",
+      chapterId,
+      evidence: [snippetAt(text, at, name.length, EVIDENCE_CONTEXT)],
+      repair: { tool: "book_character_add", args: { name }, choose: "role" },
       description: `"${name}" appears to be a character (used with dialogue tags) but is not in the story bible.`,
       suggestion: `Add "${name}" to the story bible using book_character_add.`,
     });
@@ -159,7 +173,7 @@ export function lastCarried(
 // A thread can rest for this many chapters before it is worth a reminder.
 export const THREAD_REST_CHAPTERS = 5;
 
-export interface ThreadFlag {
+export interface ThreadFlag extends FlagDetail {
   type: "plot_thread";
   severity: "warning";
   description: string;
@@ -184,6 +198,15 @@ export function checkThreads(
       flags.push({
         type: "plot_thread",
         severity: "warning",
+        code: "thread_resting",
+        chapterId: chapter.id,
+        entities: { threadId: thread.id, otherChapterId: last.id },
+        // Only if this chapter does carry it; the alternatives are in the suggestion.
+        repair: {
+          tool: "book_plot_thread_touch",
+          args: { threadId: thread.id, chapterId: chapter.id },
+          choose: "note",
+        },
         description: `Open plot thread "${thread.title}" (opened in ${thread.openedIn}) was last carried in ${last.id} ("${last.title}"), ${gap} chapters before this one.`,
         suggestion: `Weave "${thread.title}" in, resolve it, or mark it abandoned with book_plot_thread_update. If this chapter carries it without naming it, record that with book_plot_thread_touch, or give the thread keywords the prose does use.`,
       });
@@ -204,7 +227,8 @@ export function checkThreads(
  */
 export function checkScenePov(
   scenes: { scene: { index: number; text: string }; meta?: SceneMeta }[],
-  bible: StoryBible
+  bible: StoryBible,
+  chapterId: string
 ): CharacterFlag[] {
   const flags: CharacterFlag[] = [];
   for (const { scene, meta } of scenes) {
@@ -214,6 +238,10 @@ export function checkScenePov(
       flags.push({
         type: "character",
         severity: "warning",
+        code: "scene_pov_unknown_character",
+        chapterId,
+        entities: { characterId: meta.pov, sceneIndex: scene.index },
+        repair: { tool: "book_scene_set", args: { chapterId, scene: scene.index }, choose: "pov" },
         description: `Scene ${scene.index} is noted as told by "${meta.pov}", who is no longer in the story bible.`,
         suggestion: "Set the scene's point of view again with book_scene_set.",
       });
@@ -224,6 +252,11 @@ export function checkScenePov(
       flags.push({
         type: "character",
         severity: "warning",
+        code: "scene_pov_not_named",
+        chapterId,
+        entities: { characterId: character.id, sceneIndex: scene.index },
+        // Either the scene drifted (fix the prose) or the note is wrong (fix the record).
+        repair: { tool: "book_scene_set", args: { chapterId, scene: scene.index }, choose: "pov" },
         description: `Scene ${scene.index} is told from ${character.name}'s point of view, but never names them.`,
         suggestion: `Check that the scene stays in ${character.name}'s head — or correct its point of view with book_scene_set.`,
       });

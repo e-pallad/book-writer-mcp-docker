@@ -175,16 +175,22 @@ export function speakerTagIn(source: string, rules: LanguageRules): string | und
 
 /** Every name a dialogue tag gives in a text, in order, repeats included. */
 export function speakerTagsIn(text: string, rules: LanguageRules): string[] {
+  return speakerTagMatches(text, rules).map((f) => f.name);
+}
+
+/** Like speakerTagsIn, with where in the text each tag begins. */
+export function speakerTagMatches(text: string, rules: LanguageRules): { at: number; name: string }[] {
   const notNames = new Set(rules.notNames.map((w) => w.toLowerCase()));
   const found: { at: number; name: string }[] = [];
   for (const pattern of tagPatterns(rules)) {
     for (const match of text.matchAll(pattern)) {
       if (!notNames.has(match[1].toLowerCase())) {
-        found.push({ at: match.index ?? 0, name: match[1] });
+        // "said Kell" begins at the verb; the position is the name's.
+        found.push({ at: (match.index ?? 0) + Math.max(match[0].indexOf(match[1]), 0), name: match[1] });
       }
     }
   }
-  return found.sort((a, b) => a.at - b.at).map((f) => f.name);
+  return found.sort((a, b) => a.at - b.at);
 }
 
 // "<Name> said" and "said <Name>". The name is a capitalised word that does

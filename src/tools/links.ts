@@ -24,7 +24,9 @@ export function registerLinkTools(server: ToolServer): void {
       chapterId: z
         .string()
         .optional()
-        .describe('Only issues that concern this chapter (id, title or "#N"). Omit for the whole book.'),
+        .describe(
+          'Only issues that concern this chapter (id, title or "#N"). The id of a deleted chapter works too — it finds what still points at it. Omit for the whole book.'
+        ),
       severity: z
         .enum(["error", "warning", "all"])
         .optional()
@@ -44,7 +46,17 @@ export function registerLinkTools(server: ToolServer): void {
       if (!registry) throw new BookMCPError("No book project found. Run book_init first.");
       const bible = getStoryBible();
       if (!bible) throw new BookMCPError("No story bible found. Run book_init first.");
-      const only = chapterId ? resolveChapter(registry, chapterId).id : null;
+      // A deleted chapter can no longer be resolved, but its id is exactly what
+      // the dangling references name, so an id is taken as given.
+      let only: string | null = null;
+      if (chapterId) {
+        try {
+          only = resolveChapter(registry, chapterId).id;
+        } catch (error) {
+          if (!/^ch-\d+$/.test(chapterId.trim())) throw error;
+          only = chapterId.trim();
+        }
+      }
 
       const report = checkLinks({
         registry,

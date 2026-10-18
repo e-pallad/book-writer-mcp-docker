@@ -2,8 +2,10 @@ import { Registry, StoryBible, TimelineEvent } from "../storage/schema";
 import { normalizeForCompare, wholeWordRegExp } from "../utils/text";
 import { LanguageRules } from "../lang/types";
 import { namesOf } from "./continuity-rules";
+import { FlagDetail } from "./continuity-flag";
+import { snippetAt } from "../utils/match";
 
-export interface TimelineFlag {
+export interface TimelineFlag extends FlagDetail {
   type: "timeline";
   severity: "error" | "warning";
   description: string;
@@ -21,6 +23,16 @@ export const LANGUAGE_DEPENDENT_TIMELINE_CHECKS = ["timelineWeekdays", "timeline
 
 function mentionedTerms(text: string, terms: string[]): string[] {
   return terms.filter((term) => wholeWordRegExp(term).test(text));
+}
+
+// Where a text first uses any of these terms, as a quotable passage.
+function firstMention(text: string, terms: string[]) {
+  let best: { at: number; length: number } | null = null;
+  for (const term of terms) {
+    const match = wholeWordRegExp(term).exec(text);
+    if (match && (!best || match.index < best.at)) best = { at: match.index, length: match[0].length };
+  }
+  return best ? snippetAt(text, best.at, best.length, 60) : null;
 }
 
 // A day by its first name, whichever of its names the text used: "Sonnabend"
@@ -59,6 +71,8 @@ export function checkTimeline(
   if (!chapter) return { flags, skipped };
 
   const normalizedContent = normalizeForCompare(content);
+  // The chapter as written, for quoting a passage back.
+  const text = content.normalize("NFC");
   const ownEvents = events.filter((e) => e.chapterId === chapterId);
 
   // 1. Chronology against chapter order.
@@ -84,6 +98,11 @@ export function checkTimeline(
         flags.push({
           type: "timeline",
           severity: "error",
+          code: "timeline_chronology",
+          chapterId,
+          entities: { eventId: own.id, otherEventId: other.id, otherChapterId: otherChapter.id },
+          // A flashback is fixed in the notes instead; the suggestion says so.
+          repair: { tool: "book_timeline_update", args: { eventId: own.id }, choose: "sortKey" },
           description: `"${own.event}" (${own.inStoryTime || ownKey}) is logged in ${chapter.id}, after ${otherChapter.id}, but happens before "${other.event}" (${other.inStoryTime || otherKey}) which is logged there.`,
           suggestion: `Either this chapter is a flashback — note that in the event's notes — or one of the two sortKeys is wrong. Correct it with book_timeline_update.`,
         });
@@ -101,9 +120,19 @@ export function checkTimeline(
     const draftedDays = weekdaysIn(normalizedContent, rules);
     const contradictingDays = draftedDays.filter((d) => !loggedDays.includes(d));
     if (loggedDays.length && contradictingDays.length) {
+      const evidence = rules.weekdays
+        .filter((names) => contradictingDays.includes(names[0]))
+        .map((names) => firstMention(text, names))
+        .filter((e): e is NonNullable<typeof e> => e !== null);
       flags.push({
         type: "timeline",
         severity: "error",
+        code: "timeline_weekday",
+        chapterId,
+        entities: { eventId: event.id },
+        ...(evidence.length ? { evidence } : {}),
+        // Either the chapter or the event is wrong; this is the event's side.
+        repair: { tool: "book_timeline_update", args: { eventId: event.id }, choose: "inStoryTime" },
         description: `The timeline puts "${event.event}" on ${loggedDays.join("/")} ("${event.inStoryTime}"), but this chapter says ${contradictingDays.join("/")}.`,
         suggestion: `Change the chapter to match, or correct the event with book_timeline_update eventId="${event.id}".`,
       });
@@ -119,9 +148,15 @@ export function checkTimeline(
       draftedParts.length === 1 &&
       contradictingParts.length === 1
     ) {
+      const evidence = firstMention(text, (rules.dayParts as Record<string, string[]>)[contradictingParts[0]] ?? []);
       flags.push({
         type: "timeline",
         severity: "warning",
+        code: "timeline_day_part",
+        chapterId,
+        entities: { eventId: event.id },
+        ...(evidence ? { evidence: [evidence] } : {}),
+        repair: { tool: "book_timeline_update", args: { eventId: event.id }, choose: "inStoryTime" },
         description: `The timeline puts "${event.event}" at ${loggedParts.join("/")} ("${event.inStoryTime}"), but this chapter reads as ${contradictingParts[0]}.`,
         suggestion: `Check which is right and correct the other.`,
       });
@@ -136,6 +171,10 @@ export function checkTimeline(
         flags.push({
           type: "timeline",
           severity: "warning",
+          code: "timeline_unknown_character",
+          chapterId,
+          entities: { eventId: event.id, characterId },
+          repair: { tool: "book_timeline_update", args: { eventId: event.id }, choose: "characterIds" },
           description: `Timeline event "${event.event}" references character id "${characterId}", which is no longer in the story bible.`,
           suggestion: `Update the event with book_timeline_update, or re-add the character.`,
         });
@@ -145,12 +184,16 @@ export function checkTimeline(
       // Any name the character answers to, as a whole word: "Mara" is named
       // by a chapter that only says "Mara" for "Mara Vance", and an alias like
       // "Al" is not found inside "Almost".
-      const text = content.normalize("NFC");
       const named = namesOf(character).some((name) => wholeWordRegExp(name).test(text));
       if (!named) {
         flags.push({
           type: "timeline",
           severity: "warning",
+          code: "timeline_absent_character",
+          chapterId,
+          entities: { eventId: event.id, characterId: character.id },
+          // Bring them into the scene, or take them off the event: the author's call.
+          repair: { tool: "book_timeline_update", args: { eventId: event.id }, choose: "characterIds" },
           description: `The timeline has ${character.name} present for "${event.event}" in this chapter, but they are never named in it.`,
           suggestion: `Either bring ${character.name} into the scene or drop them from the event with book_timeline_update.`,
         });
