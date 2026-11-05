@@ -347,7 +347,7 @@ Afterwards the repo's `docker-compose.yml` still drives `auto-update.sh`, while 
 |------|-------------|
 | `book_note_add` | Record a note from a test reader, the editor or the author, anchored to a passage |
 | `book_note_list` | Open (or resolved) notes, with where each passage is now |
-| `book_note_resolve` | Mark a note dealt with, and how — or reopen it |
+| `book_note_resolve` | Mark a note dealt with, and how — or reopen it; `noteIds` does several in one call |
 | `book_note_delete` | Delete a note recorded by mistake |
 
 ### Front & Back Matter
@@ -1087,6 +1087,7 @@ book_note_add chapterId="Der Kai" anchorText="Sie wusste schon, wer der Tote war
               text="Woher weiß sie das an dieser Stelle schon?" source="Testleserin A" kind="question"
 book_note_list status="open"
 book_note_resolve noteId="note-…" resolution="Hinweis in Kapitel 2 eingebaut."
+book_note_resolve noteIds=["note-…", "note-…"] resolution="Erledigt."   # several at once; reply is just the ids
 ```
 
 A note is anchored to the **words** it is about, not to a position. Each time
@@ -1750,7 +1751,7 @@ That is about 1,900 tokens, a 93% cut; a tool's signature is paid for only when 
 
 ### Choosing what to pin
 
-**Usage logging is on by default** — nothing to configure. Every tool call is recorded in `.book-mcp/tool-usage.jsonl` (in Docker: `./data/.book-mcp/tool-usage.jsonl`; one line: time, tool, whether it was `listed` or went through the `gateway`, success, milliseconds — never arguments or manuscript text). Use the server normally for a while, then rank the tools:
+**Usage logging is on by default** — nothing to configure. Every tool call is recorded in `.book-mcp/tool-usage.jsonl` (in Docker: `./data/.book-mcp/tool-usage.jsonl`; one line: time, tool, whether it was `listed` or went through the `gateway`, success, milliseconds, and for a failed call a short error message with anything in quotes cut out — never arguments or manuscript text). Use the server normally for a while, then rank the tools:
 
 ```bash
 node scripts/tool-usage.js                       # reads ./data/.book-mcp/tool-usage.jsonl

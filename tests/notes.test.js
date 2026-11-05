@@ -150,3 +150,33 @@ test("deleting a chapter reports the notes left pointing at it", async (t) => {
   const deleted = await callJson(api, "book_chapter_delete", { chapterId: "ch-001", confirm: true });
   assert.ok(deleted.danglingReferences.some((r) => /1 note\(s\) on this chapter \(1 open\)/.test(r)));
 });
+
+test("several notes are resolved or reopened in one call", async (t) => {
+  const { api } = await seed(t);
+  const ids = [];
+  for (const text of ["A", "B", "C"])
+    ids.push((await callJson(api, "book_note_add", { chapterId: "ch-001", text })).note.id);
+
+  const done = await callJson(api, "book_note_resolve", {
+    noteIds: [ids[0], ids[1], ids[1], "n-gibt-es-nicht"],
+    resolution: "Erledigt.",
+  });
+  assert.deepEqual(done.ids, [ids[0], ids[1]], "duplicates are done once");
+  assert.deepEqual(done.notFound, ["n-gibt-es-nicht"]);
+  assert.equal(done.note, undefined, "the reply does not echo the notes");
+
+  const resolved = await callJson(api, "book_note_list", { status: "resolved" });
+  assert.deepEqual(resolved.notes.map((n) => n.resolution), ["Erledigt.", "Erledigt."]);
+  assert.equal((await callJson(api, "book_note_list", {})).count, 1);
+
+  const reopened = await callJson(api, "book_note_resolve", { noteIds: ids, reopen: true });
+  assert.equal(reopened.ids.length, 3);
+  assert.equal((await callJson(api, "book_note_list", {})).count, 3);
+});
+
+test("batch resolve needs exactly one of noteId and noteIds, and at least one real note", async (t) => {
+  const { api } = await seed(t);
+  await assert.rejects(callJson(api, "book_note_resolve", {}), /either noteId/);
+  await assert.rejects(callJson(api, "book_note_resolve", { noteId: "a", noteIds: ["b"] }), /either noteId/);
+  await assert.rejects(callJson(api, "book_note_resolve", { noteIds: ["x", "y"] }), /not found/);
+});

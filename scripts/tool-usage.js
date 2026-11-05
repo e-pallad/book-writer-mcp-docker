@@ -22,6 +22,7 @@ if (!fs.existsSync(file)) {
 }
 
 const stats = new Map();
+const errors = new Map(); // "tool: message" -> count
 let first, last, total = 0;
 for (const line of fs.readFileSync(file, "utf8").split("\n")) {
   if (!line.trim()) continue;
@@ -33,7 +34,11 @@ for (const line of fs.readFileSync(file, "utf8").split("\n")) {
   const s = stats.get(e.tool) ?? { n: 0, gateway: 0, failed: 0, ms: 0 };
   s.n++;
   if (e.via === "gateway") s.gateway++;
-  if (!e.ok) s.failed++;
+  if (!e.ok) {
+    s.failed++;
+    const key = `${e.tool}: ${e.err || "(no message logged)"}`;
+    errors.set(key, (errors.get(key) ?? 0) + 1);
+  }
   s.ms += e.ms || 0;
   stats.set(e.tool, s);
 }
@@ -45,5 +50,10 @@ for (const [tool, s] of rows) {
   console.log(
     `${String(s.n).padStart(5)}  ${((100 * s.n) / total).toFixed(0).padStart(4)}%  ${String(s.gateway).padStart(11)}  ${String(s.failed).padStart(6)}  ${String(Math.round(s.ms / s.n)).padStart(6)}  ${tool}`
   );
+}
+if (errors.size) {
+  console.log("\nfailures");
+  for (const [key, n] of [...errors].sort((a, b) => b[1] - a[1]).slice(0, 15))
+    console.log(`${String(n).padStart(5)}  ${key}`);
 }
 console.log(`\nSuggested pin set:\nBOOK_MCP_PINNED=${rows.filter(([t]) => t !== "book_tools").slice(0, top).map(([t]) => t).join(",")}`);
