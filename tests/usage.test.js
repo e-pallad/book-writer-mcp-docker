@@ -62,3 +62,28 @@ test("scripts/tool-usage.js ranks tools and suggests a pin set", (t) => {
   assert.match(out, /4 calls, 3 distinct tools/);
   assert.match(out, /BOOK_MCP_PINNED=b,a\n/);
 });
+
+test("a failed call logs its error with quoted text cut out", async (t) => {
+  const dir = useTempProject();
+  t.after(() => cleanup(dir));
+  const call = await connect({ mode: "full" });
+  await call("book_init", { title: "T", author: "A", genre: "Fiction" });
+  await call("book_chapter_read", { chapterId: "Geheimer Kapitelname" });
+
+  const failed = readLog(dir).filter((e) => !e.ok);
+  assert.equal(failed.length, 1);
+  assert.equal(failed[0].tool, "book_chapter_read");
+  assert.ok(failed[0].err && failed[0].err.length <= 120);
+  assert.ok(!failed[0].err.includes("Geheimer"), failed[0].err);
+  assert.ok(readLog(dir).filter((e) => e.ok).every((e) => !("err" in e)));
+});
+
+test("scripts/tool-usage.js lists failures by message", (t) => {
+  const dir = useTempProject();
+  t.after(() => cleanup(dir));
+  const file = path.join(dir, "u.jsonl");
+  const bad = (err) => JSON.stringify({ ts: "2026-10-04T00:00:00Z", tool: "a", via: "listed", ok: false, ms: 1, err });
+  fs.writeFileSync(file, [bad("No outline found."), bad("No outline found.")].join("\n") + "\n");
+  const out = execFileSync("node", [path.join(__dirname, "..", "scripts", "tool-usage.js"), file]).toString();
+  assert.match(out, /2 {2}a: No outline found\./);
+});

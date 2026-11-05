@@ -4,7 +4,10 @@
 // One JSON line per call in <project>/.book-mcp/tool-usage.jsonl:
 //   {"ts":"2026-10-04T09:44:11.000Z","tool":"book_chapter_read","via":"listed","ok":true,"ms":12}
 // Tool name, how it was reached, whether it succeeded and how long it took —
-// never the arguments or the reply, which hold the manuscript. Turn it off with
+// never the arguments or the reply, which hold the manuscript. A failed call
+// adds "err": the error message with anything quoted cut out (a title, a
+// passage) and shortened, so a failure can be told apart from another without
+// keeping what was typed. Turn it off with
 // BOOK_MCP_USAGE_LOG=0. Summarise with `node scripts/tool-usage.js`.
 //
 // Logging must never break a tool, so every failure here is swallowed.
@@ -27,13 +30,34 @@ function logPath(): string | null {
   return path.join(dir, "tool-usage.jsonl");
 }
 
-export function logToolCall(tool: string, via: Via, ok: boolean, ms: number): void {
+/** An error message safe to keep: quoted text removed, length capped. */
+export function scrubError(message: string): string {
+  return message
+    .replace(/"[^"]*"|“[^”]*”|„[^“”]*[“”]|'[^']*'/g, "…")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
+function errorText(result: { content?: unknown }): string | undefined {
+  const first = Array.isArray(result.content) ? result.content[0] : undefined;
+  return first && typeof first.text === "string" ? first.text : undefined;
+}
+
+export function logToolCall(tool: string, via: Via, ok: boolean, ms: number, err?: string): void {
   if (NOT_LOGGED.has(tool)) return;
   try {
     const file = logPath();
     if (!file) return;
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    const line = JSON.stringify({ ts: new Date().toISOString(), tool, via, ok, ms });
+    const line = JSON.stringify({
+      ts: new Date().toISOString(),
+      tool,
+      via,
+      ok,
+      ms,
+      ...(!ok && err ? { err: scrubError(err) } : {}),
+    });
     fs.appendFileSync(file, line + "\n");
   } catch {
     // Not worth failing a tool call over.
@@ -41,7 +65,7 @@ export function logToolCall(tool: string, via: Via, ok: boolean, ms: number): vo
 }
 
 /** Wraps a handler so each call is recorded once it has finished. */
-export function withUsageLog<A extends unknown[], R extends { isError?: boolean }>(
+export function withUsageLog<A extends unknown[], R extends { isError?: boolean; content?: unknown }>(
   tool: string,
   via: Via,
   handler: (...args: A) => R | Promise<R>
@@ -50,10 +74,10 @@ export function withUsageLog<A extends unknown[], R extends { isError?: boolean 
     const started = Date.now();
     try {
       const result = await handler(...args);
-      logToolCall(tool, via, !result.isError, Date.now() - started);
+      logToolCall(tool, via, !result.isError, Date.now() - started, result.isError ? errorText(result) : undefined);
       return result;
     } catch (error) {
-      logToolCall(tool, via, false, Date.now() - started);
+      logToolCall(tool, via, false, Date.now() - started, error instanceof Error ? error.message : String(error));
       throw error;
     }
   };

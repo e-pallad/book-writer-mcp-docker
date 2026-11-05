@@ -173,34 +173,62 @@ export function registerNoteTools(server: ToolServer): void {
 
   server.tool(
     "book_note_resolve",
-    "Mark a note as dealt with, optionally saying how. Pass reopen=true to open it again.",
+    "Mark a note as dealt with, optionally saying how. Pass reopen=true to open it again. To work through several notes, pass noteIds instead of noteId: they are all resolved (or reopened) in one call with the same resolution, and the reply is only their count and ids — much cheaper than one call per note. Ids that do not exist are reported under notFound and the rest are still done.",
     {
-      noteId: z.string().describe("The note's id"),
+      noteId: z.string().optional().describe("The note's id (or use noteIds for several)"),
+      noteIds: z
+        .array(z.string())
+        .min(1)
+        .max(500)
+        .optional()
+        .describe("Several notes' ids, all given the same resolution"),
       resolution: z.string().optional().describe("How it was dealt with: 'rewritten', 'kept on purpose, because …'"),
       reopen: z.boolean().optional().default(false).describe("Open a resolved note again"),
       brief: briefSchema,
     },
-    async ({ noteId, resolution, reopen, brief }) => {
-      let note!: Note;
+    async ({ noteId, noteIds, resolution, reopen, brief }) => {
+      if ((noteId === undefined) === (noteIds === undefined))
+        throw new BookMCPError("Pass either noteId (one note) or noteIds (several), not both and not neither.");
+      const ids = noteIds ? [...new Set(noteIds)] : [noteId as string];
+      const done: Note[] = [];
+      const notFound: string[] = [];
       await updateNotes((notes) => {
-        const found = notes.notes.find((n) => n.id === noteId);
-        if (!found) throw new BookMCPError(`Note "${noteId}" not found.`);
-        if (reopen) {
-          found.status = "open";
-          delete found.resolvedAt;
-        } else {
-          found.status = "resolved";
-          found.resolvedAt = new Date().toISOString();
-          if (resolution !== undefined) found.resolution = resolution;
+        for (const id of ids) {
+          const found = notes.notes.find((n) => n.id === id);
+          if (!found) {
+            notFound.push(id);
+            continue;
+          }
+          if (reopen) {
+            found.status = "open";
+            delete found.resolvedAt;
+          } else {
+            found.status = "resolved";
+            found.resolvedAt = new Date().toISOString();
+            if (resolution !== undefined) found.resolution = resolution;
+          }
+          done.push(found);
         }
-        note = found;
+        // Nothing matched: leave the file alone and say so.
+        if (!done.length) throw new BookMCPError(`Note "${notFound[0]}" not found.`);
       });
+      const verb = reopen ? "reopened" : "resolved";
+      if (noteIds) {
+        const text = JSON.stringify(
+          {
+            message: `${done.length} note(s) ${verb}.`,
+            ids: done.map((n) => n.id),
+            ...(notFound.length ? { notFound } : {}),
+          },
+          null,
+          2
+        );
+        return { content: [{ type: "text" as const, text }] };
+      }
+      const note = done[0];
       return writeReply(
         brief,
-        {
-          message: reopen ? `Note ${noteId} reopened.` : `Note ${noteId} resolved.`,
-          note,
-        },
+        { message: `Note ${note.id} ${verb}.`, note },
         { id: note.id, status: note.status }
       );
     }
